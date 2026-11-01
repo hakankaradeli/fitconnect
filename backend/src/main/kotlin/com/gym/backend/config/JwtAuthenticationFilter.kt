@@ -18,35 +18,38 @@ class JwtAuthenticationFilter(
 ) : OncePerRequestFilter() {
 
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, filterChain: FilterChain) {
-        val authHeader = request.getHeader("Authorization")
+        try {
+            val authHeader = request.getHeader("Authorization")
 
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            val token = authHeader.substring(7)
-            val email = jwtService.validateToken(token)
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                val token = authHeader.substring(7)
+                val email = jwtService.validateToken(token)
 
-            if (email != null && SecurityContextHolder.getContext().authentication == null) {
-                val role = jwtService.getRoleFromToken(token).uppercase()
-                
-                val authorities = mutableListOf(SimpleGrantedAuthority("ROLE_$role"))
-                
-                // Geçici hakları veritabanından sorgula ve ekle
-                try {
-                    val tempPermissions = delegationService.getActivePermissions(email)
-                    tempPermissions.forEach { perm ->
-                        authorities.add(SimpleGrantedAuthority("PERM_${perm.name}"))
-                        
-                        // Eğer FULL_ADMIN_ACCESS verilmişse ROLE_ADMIN yetkisi de ekle
-                        if (perm.name == "FULL_ADMIN_ACCESS") {
-                            authorities.add(SimpleGrantedAuthority("ROLE_ADMIN"))
+                if (email != null && SecurityContextHolder.getContext().authentication == null) {
+                    val role = jwtService.getRoleFromToken(token).uppercase()
+                    
+                    val authorities = mutableListOf(
+                        SimpleGrantedAuthority("ROLE_$role"),
+                        SimpleGrantedAuthority(role)
+                    )
+                    
+                    try {
+                        val tempPermissions = delegationService.getActivePermissions(email)
+                        tempPermissions.forEach { perm ->
+                            authorities.add(SimpleGrantedAuthority("PERM_${perm.name}"))
+                            if (perm.name == "FULL_ADMIN_ACCESS") {
+                                authorities.add(SimpleGrantedAuthority("ROLE_ADMIN"))
+                            }
                         }
+                    } catch (e: Exception) {
                     }
-                } catch (e: Exception) {
-                    // Hata durumunda sadece ana rol ile devam et
+                    
+                    val authToken = UsernamePasswordAuthenticationToken(email, null, authorities)
+                    SecurityContextHolder.getContext().authentication = authToken
                 }
-                
-                val authToken = UsernamePasswordAuthenticationToken(email, null, authorities)
-                SecurityContextHolder.getContext().authentication = authToken
             }
+        } catch (e: Exception) {
+            // Ignore token parsing exceptions on unauthenticated endpoints
         }
         filterChain.doFilter(request, response)
     }

@@ -1,5 +1,6 @@
 package com.gym.backend.controller
 
+import com.gym.backend.config.GlobalExceptionHandler
 import com.gym.backend.model.PermissionType
 import com.gym.backend.service.DelegationService
 import org.springframework.format.annotation.DateTimeFormat
@@ -35,7 +36,7 @@ class DelegationController(private val delegationService: DelegationService) {
             )
             ResponseEntity.ok(delegation)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 

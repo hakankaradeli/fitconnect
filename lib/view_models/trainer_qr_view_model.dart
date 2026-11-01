@@ -1,25 +1,30 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import '../services/api_service.dart';
+import '../repositories/booking_repository.dart';
 
 class TrainerQrViewModel extends ChangeNotifier {
+  final BookingRepository _bookingRepository;
+
+  TrainerQrViewModel({required BookingRepository bookingRepository})
+      : _bookingRepository = bookingRepository;
+
   Timer? _timer;
   Timer? _statusCheckTimer;
   int _secondsRemaining = 20;
   String _qrData = "";
   bool _isSessionStarted = false;
+  String? _completedMemberName;
 
   int get secondsRemaining => _secondsRemaining;
   String get qrData => _qrData;
   bool get isSessionStarted => _isSessionStarted;
+  String? get completedMemberName => _completedMemberName;
 
-  // QR kodunu oluştur ve sayacı başlat
   void startQrGenerator(String trainerId, String gymId, {int? bookingId}) {
     _isSessionStarted = false;
+    _completedMemberName = null;
     _generateNewData(trainerId, gymId, bookingId);
-    
+
     _timer?.cancel();
     _statusCheckTimer?.cancel();
 
@@ -33,43 +38,57 @@ class TrainerQrViewModel extends ChangeNotifier {
       notifyListeners();
     });
 
-    // Eğer bookingId varsa üyenin QR okutup okutmadığını anlık sorgula
+    final startTimestamp = DateTime.now().millisecondsSinceEpoch - 5000;
+
     if (bookingId != null) {
       _statusCheckTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
         await _checkBookingStatus(bookingId);
+      });
+    } else {
+      _statusCheckTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+        await _checkDirectLessonStatus(trainerId, startTimestamp);
       });
     }
   }
 
   Future<void> _checkBookingStatus(int bookingId) async {
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/bookings/$bookingId"),
-        headers: ApiService.getHeaders(),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['status'] == 'COMPLETED') {
-          _isSessionStarted = true;
-          _statusCheckTimer?.cancel();
-          _timer?.cancel();
-          notifyListeners();
-        }
+      final data = await _bookingRepository.checkBookingStatus(bookingId);
+      if (data != null && data['status'] == 'COMPLETED') {
+        _isSessionStarted = true;
+        _completedMemberName = data['member'] != null ? data['member']['fullName'] : null;
+        _statusCheckTimer?.cancel();
+        _timer?.cancel();
+        notifyListeners();
       }
     } catch (e) {
       debugPrint("Check booking status error: $e");
     }
   }
 
+  Future<void> _checkDirectLessonStatus(String trainerId, int startTimestamp) async {
+    try {
+      final data = await _bookingRepository.checkDirectLessonStatus(trainerId, startTimestamp);
+      if (data != null && data['completed'] == true) {
+        _isSessionStarted = true;
+        _completedMemberName = data['memberName'];
+        _statusCheckTimer?.cancel();
+        _timer?.cancel();
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint("Check direct lesson status error: $e");
+    }
+  }
+
   void _generateNewData(String trainerId, String gymId, int? bookingId) {
-    // Veri formatı: SESSION | TrainerID | GymID | Tam Zaman Damgası | BookingID
     final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
     _qrData = "SESSION|$trainerId|$gymId|$timestamp|${bookingId ?? ""}";
   }
 
   void resetSessionStarted() {
     _isSessionStarted = false;
+    _completedMemberName = null;
   }
 
   @override

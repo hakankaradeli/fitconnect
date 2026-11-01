@@ -1,5 +1,6 @@
 package com.gym.backend.controller
 
+import com.gym.backend.config.GlobalExceptionHandler
 import com.gym.backend.dto.ExpenseCreateRequest
 import com.gym.backend.service.ExpenseService
 import org.springframework.http.ResponseEntity
@@ -17,7 +18,7 @@ class ExpenseController(private val expenseService: ExpenseService) {
             val expense = expenseService.createExpense(request)
             ResponseEntity.ok(expense)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -32,7 +33,7 @@ class ExpenseController(private val expenseService: ExpenseService) {
             expenseService.deleteExpense(expenseId)
             ResponseEntity.ok(mapOf("message" to "Gider kaydı silindi"))
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 }

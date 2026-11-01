@@ -2,7 +2,7 @@ class SurveyModel {
   final String lessonId;
   final String trainerId;
   final String memberId;
-  final double rating; // 1-5 arası
+  final double rating;
   final String comment;
 
   SurveyModel({

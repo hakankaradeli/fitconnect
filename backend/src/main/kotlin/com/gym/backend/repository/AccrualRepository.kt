@@ -7,7 +7,11 @@ import org.springframework.stereotype.Repository
 
 @Repository
 interface AccrualRepository : JpaRepository<Accrual, Long> {
+    fun findByBookingId(bookingId: Long): Accrual?
+
     fun findAllByTrainerId(trainerId: Long): List<Accrual>
+
+    fun findAllByTrainerIdOrderByCreatedAtDesc(trainerId: Long): List<Accrual>
 
     @Query("SELECT a FROM Accrual a WHERE a.trainer.id = :trainerId AND (a.isPaid IS NULL OR a.isPaid = false)")
     fun findAllByTrainerIdAndIsPaidNotTrue(trainerId: Long): List<Accrual>

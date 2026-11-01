@@ -5,6 +5,8 @@ import '../../view_models/expense_view_model.dart';
 import '../../view_models/user_view_model.dart';
 import '../../view_models/login_view_model.dart';
 import '../../models/expense_model.dart';
+import '../../utils/currency_utils.dart';
+import '../widgets/custom_back_button.dart';
 
 class ExpenseManagementScreen extends StatefulWidget {
   const ExpenseManagementScreen({super.key});
@@ -15,7 +17,9 @@ class ExpenseManagementScreen extends StatefulWidget {
 
 class _ExpenseManagementScreenState extends State<ExpenseManagementScreen> {
   String _selectedCategoryFilter = "ALL";
-  int? _selectedMonthFilter; // null = Tüm Aylar
+  DateTimeRange? _selectedDateRange;
+  String _activePreset = "ALL";
+  int? _selectedMonthFilter;
 
   final Map<int, String> _months = const {
     1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran",
@@ -38,19 +42,93 @@ class _ExpenseManagementScreenState extends State<ExpenseManagementScreen> {
     });
   }
 
+  bool _isWithinRange(DateTime date, DateTimeRange range) {
+    final start = DateTime(range.start.year, range.start.month, range.start.day, 0, 0, 0);
+    final end = DateTime(range.end.year, range.end.month, range.end.day, 23, 59, 59);
+    return !date.isBefore(start) && !date.isAfter(end);
+  }
+
+  void _setDatePreset(String preset) {
+    final now = DateTime.now();
+    setState(() {
+      _activePreset = preset;
+      if (preset == "ALL") {
+        _selectedDateRange = null;
+        _selectedMonthFilter = null;
+      } else if (preset == "THIS_MONTH") {
+        _selectedDateRange = DateTimeRange(
+          start: DateTime(now.year, now.month, 1),
+          end: DateTime(now.year, now.month + 1, 0),
+        );
+        _selectedMonthFilter = null;
+      } else if (preset == "LAST_MONTH") {
+        _selectedDateRange = DateTimeRange(
+          start: DateTime(now.year, now.month - 1, 1),
+          end: DateTime(now.year, now.month, 0),
+        );
+        _selectedMonthFilter = null;
+      } else if (preset == "LAST_30_DAYS") {
+        _selectedDateRange = DateTimeRange(
+          start: now.subtract(const Duration(days: 30)),
+          end: now,
+        );
+        _selectedMonthFilter = null;
+      }
+    });
+  }
+
+  Future<void> _pickCustomDateRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      initialDateRange: _selectedDateRange ?? DateTimeRange(
+        start: DateTime(now.year, now.month, 1),
+        end: now,
+      ),
+      helpText: 'İki Tarih Aralığı Seçin',
+      cancelText: 'Vazgeç',
+      confirmText: 'Uygula',
+      saveText: 'Uygula',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+              primary: Colors.redAccent,
+              onPrimary: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedDateRange = picked;
+        _activePreset = "CUSTOM";
+        _selectedMonthFilter = null;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final expenseVM = context.watch<ExpenseViewModel>();
     final userData = context.read<LoginViewModel>().userData;
 
-    // Filtreleme: Kategori & Ay
     final filteredExpenses = expenseVM.expenses.where((e) {
       final matchesCategory = _selectedCategoryFilter == "ALL" || e.category == _selectedCategoryFilter;
-      final matchesMonth = _selectedMonthFilter == null || e.expenseDate.month == _selectedMonthFilter;
-      return matchesCategory && matchesMonth;
+      bool matchesDate = true;
+      if (_selectedDateRange != null) {
+        matchesDate = _isWithinRange(e.expenseDate, _selectedDateRange!);
+      } else if (_selectedMonthFilter != null) {
+        matchesDate = e.expenseDate.month == _selectedMonthFilter;
+      }
+      return matchesCategory && matchesDate;
     }).toList();
 
-    // Yeni tarihten eski tarihe doğru sıralama
     final sortedExpenses = List<ExpenseModel>.from(filteredExpenses)
       ..sort((a, b) => b.expenseDate.compareTo(a.expenseDate));
 
@@ -63,6 +141,7 @@ class _ExpenseManagementScreenState extends State<ExpenseManagementScreen> {
         title: const Text("Gider Yönetimi", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         elevation: 0,
+        leading: const CustomBackButton(),
         iconTheme: const IconThemeData(color: Colors.black),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -86,20 +165,16 @@ class _ExpenseManagementScreenState extends State<ExpenseManagementScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildTotalExpenseCard(totalFiltered),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Expanded(child: _buildMonthFilterDropdown()),
-                        const SizedBox(width: 12),
-                        Expanded(child: _buildCategoryFilterDropdown()),
-                      ],
-                    ),
+                    const SizedBox(height: 16),
+                    _buildDateFilterSection(),
+                    const SizedBox(height: 12),
+                    _buildCategoryFilterDropdown(),
                     const SizedBox(height: 20),
                     if (groupedExpenses.isEmpty)
                       const Center(
                         child: Padding(
                           padding: EdgeInsets.symmetric(vertical: 40),
-                          child: Text("Seçilen dönemde gider kaydı bulunmamaktadır.", style: TextStyle(color: Colors.grey)),
+                          child: Text("Seçilen tarih aralığında gider kaydı bulunmamaktadır.", style: TextStyle(color: Colors.grey)),
                         ),
                       )
                     else
@@ -142,7 +217,7 @@ class _ExpenseManagementScreenState extends State<ExpenseManagementScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text("Toplam Gider", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
-                Text("${total.toStringAsFixed(2)} TL", style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
+                Text(formatCurrency(total), style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
               ],
             ),
           ),
@@ -151,28 +226,137 @@ class _ExpenseManagementScreenState extends State<ExpenseManagementScreen> {
     );
   }
 
-  Widget _buildMonthFilterDropdown() {
+  Widget _buildDateFilterSection() {
+    String rangeLabel;
+    if (_selectedDateRange != null) {
+      final startStr = DateFormat('d MMM yyyy', 'tr').format(_selectedDateRange!.start);
+      final endStr = DateFormat('d MMM yyyy', 'tr').format(_selectedDateRange!.end);
+      rangeLabel = "$startStr - $endStr";
+    } else if (_selectedMonthFilter != null) {
+      rangeLabel = "${_months[_selectedMonthFilter]} Ayı";
+    } else {
+      rangeLabel = "Tüm Tarihler (Filtre Yok)";
+    }
+
+    final bool hasActiveFilter = _selectedDateRange != null || _selectedMonthFilter != null;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: hasActiveFilter ? Colors.redAccent.shade100 : Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<int?>(
-          value: _selectedMonthFilter,
-          isExpanded: true,
-          icon: const Icon(Icons.calendar_month_rounded, color: Colors.blueGrey, size: 20),
-          hint: const Text("Tüm Aylar", style: TextStyle(fontSize: 13)),
-          items: [
-            const DropdownMenuItem<int?>(value: null, child: Text("Tüm Aylar", style: TextStyle(fontSize: 13))),
-            ..._months.entries.map((e) => DropdownMenuItem<int?>(
-              value: e.key,
-              child: Text(e.value, style: const TextStyle(fontSize: 13)),
-            )).toList(),
-          ],
-          onChanged: (val) => setState(() => _selectedMonthFilter = val),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: _pickCustomDateRange,
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: hasActiveFilter ? Colors.red.shade50 : const Color(0xFFF8F9FD),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: hasActiveFilter ? Colors.redAccent.shade100 : Colors.grey.shade200,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: hasActiveFilter ? Colors.redAccent : Colors.grey.shade400,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.date_range_rounded, color: Colors.white, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          hasActiveFilter ? "Seçilen Tarih Aralığı" : "Tarih Aralığı Seç",
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: hasActiveFilter ? Colors.red.shade900 : Colors.grey.shade600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          rangeLabel,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: hasActiveFilter ? Colors.red.shade900 : Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (hasActiveFilter)
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 20),
+                      tooltip: "Filtreyi Temizle",
+                      onPressed: () => _setDatePreset("ALL"),
+                    )
+                  else
+                    const Icon(Icons.calendar_month_rounded, color: Colors.grey, size: 20),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildFilterChip("Tüm Zamanlar", _activePreset == "ALL", () => _setDatePreset("ALL")),
+                const SizedBox(width: 8),
+                _buildFilterChip("Bu Ay", _activePreset == "THIS_MONTH", () => _setDatePreset("THIS_MONTH")),
+                const SizedBox(width: 8),
+                _buildFilterChip("Geçen Ay", _activePreset == "LAST_MONTH", () => _setDatePreset("LAST_MONTH")),
+                const SizedBox(width: 8),
+                _buildFilterChip("Son 30 Gün", _activePreset == "LAST_30_DAYS", () => _setDatePreset("LAST_30_DAYS")),
+                const SizedBox(width: 8),
+                _buildFilterChip("İki Tarih Arası 📅", _activePreset == "CUSTOM", _pickCustomDateRange),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label, bool isSelected, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.redAccent : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            color: isSelected ? Colors.white : Colors.black87,
+          ),
         ),
       ),
     );
@@ -180,34 +364,42 @@ class _ExpenseManagementScreenState extends State<ExpenseManagementScreen> {
 
   Widget _buildCategoryFilterDropdown() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey.shade200),
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: _selectedCategoryFilter,
-          isExpanded: true,
-          icon: const Icon(Icons.filter_list_rounded, color: Colors.blueGrey, size: 20),
-          items: const [
-            DropdownMenuItem(value: "ALL", child: Text("Tüm Türler", style: TextStyle(fontSize: 13))),
-            DropdownMenuItem(value: "TRAINER_EARNINGS", child: Text("Hakediş Ödemesi", style: TextStyle(fontSize: 13))),
-            DropdownMenuItem(value: "TRAINER_INSURANCE", child: Text("Sigorta Primi", style: TextStyle(fontSize: 13))),
-            DropdownMenuItem(value: "TAX", child: Text("Vergiler", style: TextStyle(fontSize: 13))),
-            DropdownMenuItem(value: "ELECTRICITY", child: Text("Elektrik", style: TextStyle(fontSize: 13))),
-            DropdownMenuItem(value: "WATER", child: Text("Su", style: TextStyle(fontSize: 13))),
-            DropdownMenuItem(value: "NATURAL_GAS", child: Text("Doğalgaz", style: TextStyle(fontSize: 13))),
-            DropdownMenuItem(value: "RENT", child: Text("Kira", style: TextStyle(fontSize: 13))),
-            DropdownMenuItem(value: "ACCOUNTANT", child: Text("Muhasebeci", style: TextStyle(fontSize: 13))),
-            DropdownMenuItem(value: "BAGKUR", child: Text("Bağkur", style: TextStyle(fontSize: 13))),
-            DropdownMenuItem(value: "OTHER", child: Text("Diğer", style: TextStyle(fontSize: 13))),
-          ],
-          onChanged: (val) {
-            if (val != null) setState(() => _selectedCategoryFilter = val);
-          },
-        ),
+      child: Row(
+        children: [
+          const Icon(Icons.category_rounded, color: Colors.redAccent, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _selectedCategoryFilter,
+                isExpanded: true,
+                icon: const Icon(Icons.arrow_drop_down_rounded, color: Colors.blueGrey),
+                items: const [
+                  DropdownMenuItem(value: "ALL", child: Text("Tüm Gider Türleri", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+                  DropdownMenuItem(value: "TRAINER_EARNINGS", child: Text("Hakediş Ödemesi", style: TextStyle(fontSize: 13))),
+                  DropdownMenuItem(value: "TRAINER_INSURANCE", child: Text("Sigorta Primi", style: TextStyle(fontSize: 13))),
+                  DropdownMenuItem(value: "TAX", child: Text("Vergiler", style: TextStyle(fontSize: 13))),
+                  DropdownMenuItem(value: "ELECTRICITY", child: Text("Elektrik", style: TextStyle(fontSize: 13))),
+                  DropdownMenuItem(value: "WATER", child: Text("Su", style: TextStyle(fontSize: 13))),
+                  DropdownMenuItem(value: "NATURAL_GAS", child: Text("Doğalgaz", style: TextStyle(fontSize: 13))),
+                  DropdownMenuItem(value: "RENT", child: Text("Kira", style: TextStyle(fontSize: 13))),
+                  DropdownMenuItem(value: "ACCOUNTANT", child: Text("Muhasebeci", style: TextStyle(fontSize: 13))),
+                  DropdownMenuItem(value: "BAGKUR", child: Text("Bağkur", style: TextStyle(fontSize: 13))),
+                  DropdownMenuItem(value: "OTHER", child: Text("Diğer Giderler", style: TextStyle(fontSize: 13))),
+                ],
+                onChanged: (val) {
+                  if (val != null) setState(() => _selectedCategoryFilter = val);
+                },
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -231,7 +423,7 @@ class _ExpenseManagementScreenState extends State<ExpenseManagementScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(color: Colors.redAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
                 child: Text(
-                  "Gider: ${monthTotal.toStringAsFixed(0)} TL",
+                  "Gider: ${formatCurrency(monthTotal)}",
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.redAccent),
                 ),
               ),
@@ -277,7 +469,7 @@ class _ExpenseManagementScreenState extends State<ExpenseManagementScreen> {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text("${expense.amount.toStringAsFixed(0)} TL", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.redAccent)),
+            Text(formatCurrency(expense.amount), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: Colors.redAccent)),
             IconButton(
               icon: const Icon(Icons.delete_outline_rounded, color: Colors.grey, size: 20),
               onPressed: () => _confirmDeleteExpense(context, expense, gymId),
@@ -317,13 +509,13 @@ class _ExpenseManagementScreenState extends State<ExpenseManagementScreen> {
     final titleController = TextEditingController();
     final amountController = TextEditingController();
     final notesController = TextEditingController();
-    
+
     String selectedCategory = "ELECTRICITY";
     int? selectedTrainerId;
     DateTime selectedDate = DateTime.now();
 
     final userVM = context.read<UserViewModel>();
-    final trainers = userVM.users.where((u) => u.role == 'TRAINER' && u.isActive).toList();
+    final trainers = userVM.users.where((u) => u.isTrainerOrCanTeach && u.isActive).toList();
 
     showModalBottomSheet(
       context: context,

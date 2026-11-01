@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../services/api_service.dart';
+import '../repositories/booking_repository.dart';
+import '../repositories/finance_repository.dart';
 import '../models/booking_details_model.dart';
 import '../models/slot_availability_model.dart';
 import '../models/user_model.dart';
 
 class CalendarViewModel extends ChangeNotifier {
+  final BookingRepository _bookingRepository;
+  final FinanceRepository _financeRepository;
+
+  CalendarViewModel({
+    required BookingRepository bookingRepository,
+    required FinanceRepository financeRepository,
+  })  : _bookingRepository = bookingRepository,
+        _financeRepository = financeRepository;
+
   List<BookingDetails> _memberHistory = [];
   List<SlotAvailability> _availableSlots = [];
   bool _isLoading = false;
@@ -21,6 +30,8 @@ class CalendarViewModel extends ChangeNotifier {
   bool get isSlotsLoading => _isSlotsLoading;
   bool _isTrainersLoading = false;
   bool get isTrainersLoading => _isTrainersLoading;
+  String? _errorMessage;
+  String? get errorMessage => _errorMessage;
 
   Future<void> fetchAvailableTrainers(int gymId, DateTime startTime) async {
     _isTrainersLoading = true;
@@ -28,16 +39,7 @@ class CalendarViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      String format(DateTime dt) => dt.toIso8601String().split('.').first;
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/bookings/available-trainers?gymId=$gymId&startTime=${format(startTime)}"),
-        headers: ApiService.getHeaders(),
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        _availableTrainers = data.map((json) => UserModel.fromJson(json)).toList();
-      }
+      _availableTrainers = await _bookingRepository.getAvailableTrainers(gymId, startTime);
     } catch (e) {
       debugPrint("Available trainers error: $e");
     } finally {
@@ -52,16 +54,7 @@ class CalendarViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final dateStr = "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/bookings/available-slots?trainerId=$trainerId&gymId=$gymId&date=$dateStr"),
-        headers: ApiService.getHeaders(),
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        _availableSlots = data.map((json) => SlotAvailability.fromJson(json)).toList();
-      }
+      _availableSlots = await _bookingRepository.getAvailableSlots(trainerId, gymId, date);
     } catch (e) {
       debugPrint("Available slots error: $e");
     } finally {
@@ -70,18 +63,45 @@ class CalendarViewModel extends ChangeNotifier {
     }
   }
 
+  Future<bool> createBulkBookings({
+    required int memberId,
+    required int trainerId,
+    required int gymId,
+    required List<DateTime> startTimes,
+  }) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final response = await _bookingRepository.createBulkBookings(
+        memberId: memberId,
+        trainerId: trainerId,
+        gymId: gymId,
+        startTimes: startTimes,
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        final errorData = jsonDecode(response.body);
+        _errorMessage = errorData['error'] ?? "Randevular oluşturulamadı";
+      }
+    } catch (e) {
+      _errorMessage = "Sunucuya bağlanılamadı: $e";
+      debugPrint("Bulk booking error: $e");
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+    return false;
+  }
+
   Future<void> fetchMemberHistory(int memberId) async {
     _isLoading = true;
     notifyListeners();
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/bookings/member-history/$memberId"),
-        headers: ApiService.getHeaders(),
-      );
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        _memberHistory = data.map((json) => BookingDetails.fromJson(json)).toList();
-      }
+      _memberHistory = await _bookingRepository.getMemberHistory(memberId);
     } catch (e) {
       debugPrint("History fetch error: $e");
     } finally {
@@ -90,13 +110,86 @@ class CalendarViewModel extends ChangeNotifier {
     }
   }
 
+  Future<bool> refundBooking(int bookingId) async {
+    try {
+      final success = await _bookingRepository.refundBooking(bookingId);
+      if (success) {
+        return true;
+      } else {
+        _errorMessage = "İade işlemi başarısız";
+        return false;
+      }
+    } catch (e) {
+      debugPrint("Refund error: $e");
+      _errorMessage = "Sunucuya bağlanılamadı.";
+      return false;
+    }
+  }
+
+  Future<bool> cancelAndRefundBooking(
+    int bookingId, {
+    int? memberId,
+    int? cancelledById,
+    String? reason,
+  }) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      bool isRefundEndpointSuccess = false;
+      try {
+        isRefundEndpointSuccess = await _bookingRepository.refundBooking(bookingId);
+      } catch (e) {
+        debugPrint("Refund endpoint call error: $e");
+      }
+
+      if (!isRefundEndpointSuccess) {
+        final rejectSuccess = await rejectBooking(
+          bookingId,
+          cancelledById: cancelledById,
+          reason: reason ?? "Yönetici tarafından üyenin katılamadığı ders iptal edildi ve kredi iade edildi.",
+        );
+        if (!rejectSuccess) {
+          _isLoading = false;
+          notifyListeners();
+          return false;
+        }
+
+        if (memberId != null) {
+          try {
+            final balance = await _financeRepository.getBalance(memberId);
+            final int totalPurchased = balance.totalCredits;
+            final int totalUsed = balance.usedCredits;
+
+            final int newUsed = totalUsed > 0 ? totalUsed - 1 : 0;
+            final int newTotal = totalUsed > 0 ? totalPurchased : totalPurchased + 1;
+
+            await _financeRepository.updateMemberCredit(
+              memberId: memberId,
+              totalPurchased: newTotal,
+              totalUsed: newUsed,
+            );
+          } catch (e) {
+            debugPrint("Direct credit refund error: $e");
+          }
+        }
+      }
+
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint("Cancel and refund error: $e");
+      _errorMessage = "Sunucuya bağlanılamadı.";
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<bool> proposeBookingChange(int bookingId, DateTime newTime) async {
     try {
-      final uri = Uri.parse("${ApiService.baseUrl}/bookings/propose/$bookingId")
-          .replace(queryParameters: {"newStartTime": newTime.toIso8601String()});
-      
-      final response = await http.put(uri, headers: ApiService.getHeaders());
-      return response.statusCode == 200;
+      return await _bookingRepository.proposeChange(bookingId, newTime);
     } catch (e) {
       return false;
     }
@@ -104,11 +197,7 @@ class CalendarViewModel extends ChangeNotifier {
 
   Future<bool> approveBooking(int bookingId) async {
     try {
-      final response = await http.put(
-        Uri.parse("${ApiService.baseUrl}/bookings/approve/$bookingId"),
-        headers: ApiService.getHeaders(),
-      );
-      return response.statusCode == 200;
+      return await _bookingRepository.approveBooking(bookingId);
     } catch (e) {
       return false;
     }
@@ -148,15 +237,11 @@ class CalendarViewModel extends ChangeNotifier {
     required DateTime startTime,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse("${ApiService.baseUrl}/bookings/create"),
-        headers: ApiService.getHeaders(),
-        body: jsonEncode({
-          "memberId": memberId,
-          "trainerId": trainerId,
-          "gymId": gymId,
-          "startTime": startTime.toIso8601String(),
-        }),
+      final response = await _bookingRepository.createBooking(
+        memberId: memberId,
+        trainerId: trainerId,
+        gymId: gymId,
+        startTime: startTime,
       );
       if (response.statusCode == 200) {
         return true;
@@ -171,16 +256,7 @@ class CalendarViewModel extends ChangeNotifier {
 
   Future<bool> rejectBooking(int bookingId, {int? cancelledById, String? reason}) async {
     try {
-      final queryParams = {
-        if (cancelledById != null) 'cancelledById': cancelledById.toString(),
-        if (reason != null) 'reason': reason,
-      };
-      
-      final uri = Uri.parse("${ApiService.baseUrl}/bookings/reject/$bookingId")
-          .replace(queryParameters: queryParams);
-          
-      final response = await http.put(uri, headers: ApiService.getHeaders());
-      return response.statusCode == 200;
+      return await _bookingRepository.rejectBooking(bookingId, cancelledById: cancelledById, reason: reason);
     } catch (e) {
       return false;
     }
@@ -188,11 +264,7 @@ class CalendarViewModel extends ChangeNotifier {
 
   Future<bool> changeBookingTrainer(int bookingId, int newTrainerId) async {
     try {
-      final response = await http.put(
-        Uri.parse("${ApiService.baseUrl}/bookings/change-trainer/$bookingId?newTrainerId=$newTrainerId"),
-        headers: ApiService.getHeaders(),
-      );
-      return response.statusCode == 200;
+      return await _bookingRepository.changeTrainer(bookingId, newTrainerId);
     } catch (e) {
       return false;
     }
@@ -205,15 +277,11 @@ class CalendarViewModel extends ChangeNotifier {
     required List<DateTime> startTimes,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse("${ApiService.baseUrl}/bookings/create-bulk"),
-        headers: ApiService.getHeaders(),
-        body: jsonEncode({
-          "memberId": memberId,
-          "trainerId": trainerId,
-          "gymId": gymId,
-          "startTimes": startTimes.map((t) => t.toIso8601String()).toList(),
-        }),
+      final response = await _bookingRepository.createBulkBookings(
+        memberId: memberId,
+        trainerId: trainerId,
+        gymId: gymId,
+        startTimes: startTimes,
       );
       if (response.statusCode == 200) {
         return true;
@@ -228,12 +296,7 @@ class CalendarViewModel extends ChangeNotifier {
 
   Future<bool> addPerformedExercises(int bookingId, List<PerformedExercise> exercises) async {
     try {
-      final response = await http.post(
-        Uri.parse("${ApiService.baseUrl}/bookings/$bookingId/exercises"),
-        headers: ApiService.getHeaders(),
-        body: jsonEncode(exercises.map((e) => e.toJson()).toList()),
-      );
-      return response.statusCode == 200;
+      return await _bookingRepository.addPerformedExercises(bookingId, exercises);
     } catch (e) {
       debugPrint("Add exercises error: $e");
       return false;

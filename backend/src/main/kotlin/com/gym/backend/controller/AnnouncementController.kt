@@ -1,5 +1,6 @@
 package com.gym.backend.controller
 
+import com.gym.backend.config.GlobalExceptionHandler
 import com.gym.backend.dto.AnnouncementCreateRequest
 import com.gym.backend.service.AnnouncementService
 import org.springframework.http.ResponseEntity
@@ -17,7 +18,7 @@ class AnnouncementController(private val announcementService: AnnouncementServic
             val announcement = announcementService.createAnnouncement(request)
             ResponseEntity.ok(announcement)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -34,7 +35,7 @@ class AnnouncementController(private val announcementService: AnnouncementServic
             announcementService.deleteAnnouncement(id)
             ResponseEntity.ok(mapOf("message" to "Duyuru silindi"))
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 }

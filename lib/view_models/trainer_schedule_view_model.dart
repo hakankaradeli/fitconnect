@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../services/api_service.dart';
+import '../repositories/booking_repository.dart';
 import '../models/booking_details_model.dart';
 
 class TrainerScheduleViewModel extends ChangeNotifier {
+  final BookingRepository _bookingRepository;
+
+  TrainerScheduleViewModel({required BookingRepository bookingRepository})
+      : _bookingRepository = bookingRepository;
+
   List<BookingDetails> _bookings = [];
   List<BookingDetails> _pendingApprovals = [];
   List<BookingDetails> _adminPendingBookings = [];
+  List<BookingDetails> _gymWeeklyBookings = [];
   bool _isLoading = false;
   bool _isPendingLoading = false;
   String? _errorMessage;
@@ -15,21 +19,15 @@ class TrainerScheduleViewModel extends ChangeNotifier {
   List<BookingDetails> get bookings => _bookings;
   List<BookingDetails> get pendingApprovals => _pendingApprovals;
   List<BookingDetails> get adminPendingBookings => _adminPendingBookings;
+  List<BookingDetails> get gymWeeklyBookings => _gymWeeklyBookings;
   bool get isLoading => _isLoading;
   bool get isPendingLoading => _isPendingLoading;
   String? get errorMessage => _errorMessage;
 
   Future<void> fetchAdminPendingBookings(int gymId) async {
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/bookings/admin-pending/$gymId"),
-        headers: ApiService.getHeaders(),
-      );
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        _adminPendingBookings = data.map((json) => BookingDetails.fromJson(json)).toList();
-        notifyListeners();
-      }
+      _adminPendingBookings = await _bookingRepository.getAdminPendingBookings(gymId);
+      notifyListeners();
     } catch (e) {
       debugPrint("Fetch admin pending error: $e");
     }
@@ -39,14 +37,7 @@ class TrainerScheduleViewModel extends ChangeNotifier {
     _isPendingLoading = true;
     notifyListeners();
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/bookings/trainer-pending/$trainerId"),
-        headers: ApiService.getHeaders(),
-      );
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        _pendingApprovals = data.map((json) => BookingDetails.fromJson(json)).toList();
-      }
+      _pendingApprovals = await _bookingRepository.getTrainerPendingApprovals(trainerId);
     } catch (e) {
       debugPrint("Pending approvals error: $e");
     } finally {
@@ -57,11 +48,8 @@ class TrainerScheduleViewModel extends ChangeNotifier {
 
   Future<bool> approveBooking(int bookingId, int trainerId) async {
     try {
-      final response = await http.put(
-        Uri.parse("${ApiService.baseUrl}/bookings/trainer-approve/$bookingId"),
-        headers: ApiService.getHeaders(),
-      );
-      if (response.statusCode == 200) {
+      final success = await _bookingRepository.trainerApprove(bookingId);
+      if (success) {
         fetchPendingApprovals(trainerId);
         return true;
       }
@@ -71,17 +59,14 @@ class TrainerScheduleViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> rejectBooking(int bookingId, int trainerId, {String? reason}) async {
+  Future<bool> rejectBooking(int bookingId, int trainerId, {String? reason, bool isDirectCancel = false}) async {
     try {
-      String url = "${ApiService.baseUrl}/bookings/trainer-reject/$bookingId";
-      if (reason != null && reason.isNotEmpty) {
-        url += "?reason=${Uri.encodeComponent(reason)}";
-      }
-      final response = await http.put(
-        Uri.parse(url),
-        headers: ApiService.getHeaders(),
+      final success = await _bookingRepository.trainerReject(
+        bookingId,
+        reason: reason,
+        isDirectCancel: isDirectCancel,
       );
-      if (response.statusCode == 200) {
+      if (success) {
         fetchPendingApprovals(trainerId);
         return true;
       }
@@ -97,30 +82,25 @@ class TrainerScheduleViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Milisaniyeleri temizleyerek Spring Boot uyumlu ISO formatı oluştur (yyyy-MM-ddTHH:mm:ss)
-      String format(DateTime dt) => dt.toIso8601String().split('.').first;
+      _bookings = await _bookingRepository.getTrainerSchedule(trainerId, start, end);
+      _isLoading = false;
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = "Hata: $e";
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 
-      final url = Uri.parse("${ApiService.baseUrl}/bookings/trainer-schedule/$trainerId").replace(
-        queryParameters: {
-          "start": format(start),
-          "end": format(end),
-        },
-      );
-      final response = await http.get(
-        url,
-        headers: ApiService.getHeaders(),
-      );
+  Future<void> fetchGymSchedule(int gymId, DateTime start, DateTime end) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
 
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        _bookings = data.map((json) => BookingDetails.fromJson(json)).toList();
-        _isLoading = false;
-        notifyListeners();
-      } else {
-        _errorMessage = "Program yüklenemedi: ${response.statusCode}";
-        _isLoading = false;
-        notifyListeners();
-      }
+    try {
+      _gymWeeklyBookings = await _bookingRepository.getGymSchedule(gymId, start, end);
+      _isLoading = false;
+      notifyListeners();
     } catch (e) {
       _errorMessage = "Hata: $e";
       _isLoading = false;
@@ -130,15 +110,22 @@ class TrainerScheduleViewModel extends ChangeNotifier {
 
   Future<bool> addPerformedExercises(int bookingId, List<PerformedExercise> exercises) async {
     try {
-      final response = await http.post(
-        Uri.parse("${ApiService.baseUrl}/bookings/$bookingId/exercises"),
-        headers: ApiService.getHeaders(),
-        body: jsonEncode(exercises.map((e) => e.toJson()).toList()),
-      );
-      return response.statusCode == 200;
+      return await _bookingRepository.addPerformedExercises(bookingId, exercises);
     } catch (e) {
       debugPrint("Add exercises error: $e");
       return false;
+    }
+  }
+
+  Future<Map<String, dynamic>> startDirectLesson(int trainerId, int memberId, {String? lessonType}) async {
+    try {
+      final result = await _bookingRepository.startDirectLesson(trainerId, memberId, lessonType);
+      if (result != null) {
+        return {"success": true, "message": result['message'] ?? "Ders başarıyla başlatıldı!"};
+      }
+      return {"success": false, "message": "Ders başlatılamadı."};
+    } catch (e) {
+      return {"success": false, "message": "Hata: $e"};
     }
   }
 }

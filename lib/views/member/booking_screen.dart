@@ -5,6 +5,7 @@ import '../../view_models/calendar_view_model.dart';
 import '../../view_models/login_view_model.dart';
 import '../../view_models/user_view_model.dart';
 import '../../models/user_model.dart';
+import '../widgets/custom_back_button.dart';
 
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
@@ -28,22 +29,19 @@ class _BookingScreenState extends State<BookingScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userData = context.read<LoginViewModel>().userData;
       final userVM = context.read<UserViewModel>();
-      
+
       if (userData != null) {
-        // Sabit eğitmeni ata
         setState(() {
           _selectedTrainerId = userData['assignedTrainer']?['id'];
           _selectedTrainerName = userData['assignedTrainer']?['fullName'];
-          
+
           if (_selectedTrainerName == null) {
             _selectedTrainerName = "Eğitmen Atanmamış";
           }
         });
 
-        // Tüm eğitmenleri çek (Eğitmen değiştirme seçeneği için)
         userVM.fetchUsers(userData['gymId']);
-        
-        // Müsaitlikleri çek
+
         if (_selectedTrainerId != null) {
           _fetchSlots();
         }
@@ -66,31 +64,32 @@ class _BookingScreenState extends State<BookingScreen> {
   Widget build(BuildContext context) {
     final calendarVM = context.watch<CalendarViewModel>();
     final userVM = context.watch<UserViewModel>();
-    
-    // Sadece aktif ve izni olmayan eğitmenleri filtrele
+
     final trainers = userVM.users.where((u) {
-      final isTrainer = u.role == 'TRAINER';
+      final isTrainer = u.isTrainerOrCanTeach;
       final isActive = u.isActive;
-      // Eğer seçilen tarih eğitmenin izin aralığındaysa onu gösterme
+
       bool isOnLeaveAtSelectedDate = false;
       if (u.leaveStart != null && u.leaveEnd != null) {
         final start = DateTime(u.leaveStart!.year, u.leaveStart!.month, u.leaveStart!.day);
         final end = DateTime(u.leaveEnd!.year, u.leaveEnd!.month, u.leaveEnd!.day, 23, 59);
-        isOnLeaveAtSelectedDate = _selectedDate.isAfter(start.subtract(const Duration(seconds: 1))) && 
+        isOnLeaveAtSelectedDate = _selectedDate.isAfter(start.subtract(const Duration(seconds: 1))) &&
                                  _selectedDate.isBefore(end.add(const Duration(seconds: 1)));
       }
-      
+
       return isTrainer && isActive && !isOnLeaveAtSelectedDate;
     }).toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Randevu Al")),
+      appBar: AppBar(
+        title: const Text("Randevu Al", style: TextStyle(fontWeight: FontWeight.bold)),
+        leading: const CustomBackButton(),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Sabit Eğitmen Bilgisi (Öncelikli)
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -106,17 +105,16 @@ class _BookingScreenState extends State<BookingScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text("Eğitmeniniz", style: TextStyle(fontSize: 12, color: Colors.blueGrey)),
-                      Text(_selectedTrainerName ?? "Yükleniyor...", 
+                      Text(_selectedTrainerName ?? "Yükleniyor...",
                           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ],
               ),
             ),
-            
+
             const SizedBox(height: 20),
 
-            // 2. Tarih Seçimi
             Row(
               children: [
                 const Text("Tarih Seçin", style: TextStyle(fontWeight: FontWeight.bold)),
@@ -126,8 +124,7 @@ class _BookingScreenState extends State<BookingScreen> {
                   label: Text(DateFormat('dd MMMM yyyy', 'tr').format(_selectedDate)),
                   onPressed: () async {
                     DateTime initial = _selectedDate;
-                    
-                    // Seçili günün uygun olup olmadığını kontrol eden fonksiyon
+
                     bool isDateSelectable(DateTime val) {
                       if (val.weekday == DateTime.sunday) return false;
                       if (_selectedTrainerId != null) {
@@ -144,7 +141,6 @@ class _BookingScreenState extends State<BookingScreen> {
                       return true;
                     }
 
-                    // Eğer initialDate geçersizse (Pazar veya İzinli), geçerli olan ilk günü bul
                     while (!isDateSelectable(initial)) {
                       initial = initial.add(const Duration(days: 1));
                     }
@@ -164,13 +160,12 @@ class _BookingScreenState extends State<BookingScreen> {
                 ),
               ],
             ),
-            
+
             const Divider(),
 
-            // 3. Müsait Saatler Tablosu
             const Text("Müsait Saatler", style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
-            
+
             if (calendarVM.isSlotsLoading)
               const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()))
             else if (_selectedTrainerId == null)
@@ -214,19 +209,18 @@ class _BookingScreenState extends State<BookingScreen> {
             const SizedBox(height: 30),
             const Divider(),
 
-            // 4. Eğitmen Değiştirme Seçeneği (En altta)
             Theme(
               data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
               child: ExpansionTile(
                 leading: const Icon(Icons.swap_horiz, color: Colors.orange),
-                title: const Text("Farklı bir eğitmen seçmek istiyorum", 
+                title: const Text("Farklı bir eğitmen seçmek istiyorum",
                     style: TextStyle(fontSize: 13, color: Colors.orange, fontWeight: FontWeight.w500)),
                 children: [
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8.0),
                     child: DropdownButtonFormField<int>(
-                      value: trainers.any((t) => int.parse(t.id) == _selectedTrainerId) 
-                          ? _selectedTrainerId 
+                      value: trainers.any((t) => int.parse(t.id) == _selectedTrainerId)
+                          ? _selectedTrainerId
                           : null,
                       isExpanded: true,
                       decoration: const InputDecoration(
@@ -235,7 +229,7 @@ class _BookingScreenState extends State<BookingScreen> {
                         contentPadding: EdgeInsets.symmetric(horizontal: 12),
                       ),
                       items: trainers.map((t) => DropdownMenuItem<int>(
-                        value: int.parse(t.id), 
+                        value: int.parse(t.id),
                         child: Text(t.fullName)
                       )).toList(),
                       onChanged: (val) {
@@ -277,8 +271,8 @@ class _BookingScreenState extends State<BookingScreen> {
                   startTime: time,
                 );
                 if (success && mounted) {
-                  Navigator.pop(context); // Dialogu kapat
-                  Navigator.pop(context); // Booking ekranını kapat
+                  Navigator.pop(context);
+                  Navigator.pop(context);
                   calendarVM.fetchMemberHistory(loginVM.userData?['userId']);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text("Randevunuz başarıyla oluşturuldu.")),

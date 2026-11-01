@@ -5,6 +5,7 @@ import com.gym.backend.model.UserRole
 import com.gym.backend.repository.NutritionRepository
 import com.gym.backend.repository.NotificationRepository
 import com.gym.backend.repository.UserRepository
+import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -16,6 +17,7 @@ class NutritionScheduler(
     private val notificationRepository: NotificationRepository,
     private val userRepository: UserRepository
 ) {
+    private val logger = LoggerFactory.getLogger(NutritionScheduler::class.java)
 
     // Her sabah saat 09:00'da çalışır (T-3 Gün İkazı & Gecikme Raporu)
     @Scheduled(cron = "0 0 9 * * *")
@@ -41,14 +43,15 @@ class NutritionScheduler(
             val delayDays = java.time.Duration.between(plan.expiryDate, now).toDays()
             val adminWarning = "Beslenme Planı Gecikme Uyarısı: ${plan.trainer.fullName} eğitmeni, ${plan.member.fullName} üyesinin 2 aylık beslenme planını $delayDays gündür güncellememiştir."
             
-            val admins = userRepository.findAllByGymIdAndRoleAndIsDeletedFalse(plan.member.gym.id!!, UserRole.ADMIN)
+            val gymId = plan.member.gym?.id ?: 1L
+            val admins = userRepository.findAllByGymIdAndRoleAndIsDeletedFalse(gymId, UserRole.ADMIN)
             admins.forEach { admin ->
                 notificationRepository.save(Notification(user = admin, message = adminWarning))
             }
         }
 
         if (expiringSoonPlans.isNotEmpty() || expiredPlans.isNotEmpty()) {
-            println("--- BESLENME SCHEDULER: ${expiringSoonPlans.size} eğitmene T-3 gün ikazı gönderildi, ${expiredPlans.size} gecikme yöneticiye raporlandı. ---")
+            logger.info("Beslenme zamanlayıcısı: {} eğitmene T-3 gün ikazı gönderildi, {} gecikme yöneticiye raporlandı.", expiringSoonPlans.size, expiredPlans.size)
         }
     }
 }

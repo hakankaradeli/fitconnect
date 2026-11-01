@@ -4,9 +4,18 @@ import '../../../view_models/survey_view_model.dart';
 
 class SurveyDialog extends StatelessWidget {
   final String trainerName;
+  final int? bookingId;
+  final int? trainerId;
+  final int? memberId;
   final TextEditingController _commentController = TextEditingController();
 
-  SurveyDialog({super.key, required this.trainerName});
+  SurveyDialog({
+    super.key,
+    required this.trainerName,
+    this.bookingId,
+    this.trainerId,
+    this.memberId,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -18,11 +27,10 @@ class SurveyDialog extends StatelessWidget {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text("Puanın eğitmene gizli tutulacaktır.", 
+          const Text("Puanın eğitmene gizli tutulacaktır.",
             style: TextStyle(fontSize: 12, color: Colors.grey)),
           const SizedBox(height: 20),
-          
-          // 5 Yıldız Seçimi
+
           FittedBox(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -40,7 +48,7 @@ class SurveyDialog extends StatelessWidget {
               }),
             ),
           ),
-          
+
           const SizedBox(height: 20),
           TextField(
             controller: _commentController,
@@ -61,7 +69,12 @@ class SurveyDialog extends StatelessWidget {
           onPressed: viewModel.isSubmitting || viewModel.rating == 0
               ? null
               : () async {
-                  bool success = await viewModel.submitSurvey(_commentController.text);
+                  bool success = await viewModel.submitSurvey(
+                    _commentController.text,
+                    bookingId: bookingId,
+                    trainerId: trainerId,
+                    memberId: memberId,
+                  );
                   if (success && context.mounted) {
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -69,7 +82,7 @@ class SurveyDialog extends StatelessWidget {
                     );
                   }
                 },
-          child: viewModel.isSubmitting 
+          child: viewModel.isSubmitting
               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
               : const Text("Gönder"),
         ),

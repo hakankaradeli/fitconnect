@@ -5,6 +5,7 @@ import '../../view_models/login_view_model.dart';
 import '../../utils/formatters.dart';
 import '../../constants/lesson_constants.dart';
 import 'package:flutter/services.dart';
+import '../widgets/custom_back_button.dart';
 
 class CreateTrainerScreen extends StatefulWidget {
   const CreateTrainerScreen({super.key});
@@ -44,51 +45,29 @@ class _CreateTrainerScreenState extends State<CreateTrainerScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("PT Ders Türleri:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  children: LessonConstants.ptTypes.map((type) => FilterChip(
-                    label: Text(type, style: const TextStyle(fontSize: 12)),
-                    selected: tempSelected.contains(type),
-                    selectedColor: Colors.blue.shade100,
-                    onSelected: (val) => setDialogState(() {
-                      if (val) tempSelected.add(type); else tempSelected.remove(type);
-                    }),
-                  )).toList(),
-                ),
-                const SizedBox(height: 12),
-
-                const Text("Reformer Pilates Ders Türleri:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.purple)),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  children: LessonConstants.reformerTypes.map((type) => FilterChip(
-                    label: Text(type, style: const TextStyle(fontSize: 12)),
-                    selected: tempSelected.contains(type),
-                    selectedColor: Colors.purple.shade100,
-                    onSelected: (val) => setDialogState(() {
-                      if (val) tempSelected.add(type); else tempSelected.remove(type);
-                    }),
-                  )).toList(),
-                ),
-                const SizedBox(height: 12),
-
-                const Text("Yoga Ders Türleri:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  children: LessonConstants.yogaTypes.map((type) => FilterChip(
-                    label: Text(type, style: const TextStyle(fontSize: 12)),
-                    selected: tempSelected.contains(type),
-                    selectedColor: Colors.teal.shade100,
-                    onSelected: (val) => setDialogState(() {
-                      if (val) tempSelected.add(type); else tempSelected.remove(type);
-                    }),
-                  )).toList(),
-                ),
-              ],
+              children: LessonConstants.mainGroups.map((group) {
+                final subTypes = LessonConstants.getSubTypes(group);
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("$group Ders Türleri:", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: subTypes.map((type) => FilterChip(
+                        label: Text(type, style: const TextStyle(fontSize: 12)),
+                        selected: tempSelected.contains(type),
+                        selectedColor: Colors.indigo.shade100,
+                        onSelected: (val) => setDialogState(() {
+                          if (val) tempSelected.add(type); else tempSelected.remove(type);
+                        }),
+                      )).toList(),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                );
+              }).toList(),
             ),
           ),
           actions: [
@@ -116,8 +95,16 @@ class _CreateTrainerScreenState extends State<CreateTrainerScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Yeni Eğitmen Ekle"),
+        title: const Text("Yeni Eğitmen Ekle", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.redAccent,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
+        leading: const CustomBackButton(
+          color: Colors.white,
+          backgroundColor: Color(0x33FFFFFF),
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -147,7 +134,7 @@ class _CreateTrainerScreenState extends State<CreateTrainerScreen> {
                 decoration: const InputDecoration(
                   labelText: "Telefon", 
                   border: OutlineInputBorder(),
-                  prefixText: "+90 ",
+                  hintText: "+90 5XX XXX XX XX",
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) return "Lütfen telefon girin";
@@ -211,7 +198,7 @@ class _CreateTrainerScreenState extends State<CreateTrainerScreen> {
                           bool success = await viewModel.createUser(
                             fullName: _nameController.text.trim(),
                             email: _emailController.text.trim(),
-                            phone: "+90 ${_phoneController.text.trim()}",
+                            phone: formatPhoneNumber(_phoneController.text),
                             password: _passwordController.text.trim(),
                             role: "TRAINER",
                             gymId: userData?['gymId'] ?? 1,

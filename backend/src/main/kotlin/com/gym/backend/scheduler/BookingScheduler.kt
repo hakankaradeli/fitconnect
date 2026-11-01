@@ -4,6 +4,7 @@ import com.gym.backend.model.Notification
 import com.gym.backend.repository.BookingRepository
 import com.gym.backend.repository.NotificationRepository
 import com.gym.backend.service.FinanceService
+import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -16,6 +17,7 @@ class BookingScheduler(
     private val notificationRepository: NotificationRepository,
     private val financeService: FinanceService
 ) {
+    private val logger = LoggerFactory.getLogger(BookingScheduler::class.java)
 
     // Her 15 dakikada bir çalışır ve süresi dolan dersleri (No-Show) otomatik kapatır
     @Scheduled(cron = "0 0/15 * * * *")
@@ -50,7 +52,7 @@ class BookingScheduler(
         }
 
         if (pastBookings.isNotEmpty()) {
-            println("--- NO-SHOW OTOMATİK İŞLEMİ: ${pastBookings.size} adet ders kapatıldı ve 1 kredisi düşüldü. ---")
+            logger.info("NO-SHOW OTOMATİK İŞLEMİ: {} adet ders kapatıldı ve 1 kredisi düşüldü.", pastBookings.size)
         }
     }
 
@@ -73,7 +75,7 @@ class BookingScheduler(
         }
 
         if (morningBookings.isNotEmpty()) {
-            println("--- KATILIM TEYİT BİLDİRİMİ (GECE 23:00): ${morningBookings.size} üyeye yarın sabahki dersleri için teyit bildirimi gönderildi. ---")
+            logger.info("KATILIM TEYİT BİLDİRİMİ (GECE 23:00): {} üyeye yarın sabahki dersleri için teyit bildirimi gönderildi.", morningBookings.size)
         }
     }
 
@@ -102,7 +104,7 @@ class BookingScheduler(
         }
 
         if (afternoonBookings.isNotEmpty()) {
-            println("--- KATILIM TEYİT BİLDİRİMİ (6 SAAT ÖNCE): ${afternoonBookings.size} üyeye 6 saat sonraki dersleri için teyit bildirimi gönderildi. ---")
+            logger.info("KATILIM TEYİT BİLDİRİMİ (6 SAAT ÖNCE): {} üyeye 6 saat sonraki dersleri için teyit bildirimi gönderildi.", afternoonBookings.size)
         }
     }
 }

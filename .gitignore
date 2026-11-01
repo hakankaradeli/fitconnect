@@ -44,5 +44,24 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Keystore and signing keys
+key.properties
+*.keystore
+*.jks
+*.key
+*.tar.gz
+android/key.properties
+android/app/*.jks
+android/app/*.keystore
+
+# Backend
+backend/build/
+backend/.gradle/
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/src/main/resources/application-prod.properties
+
 # Widget Preview related
 .widget_preview/
+

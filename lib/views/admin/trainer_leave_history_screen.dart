@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../view_models/user_view_model.dart';
 import '../../models/user_model.dart';
+import '../widgets/custom_back_button.dart';
 
 class TrainerLeaveHistoryScreen extends StatefulWidget {
   final UserModel trainer;
@@ -28,8 +30,16 @@ class _TrainerLeaveHistoryScreenState extends State<TrainerLeaveHistoryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text("${widget.trainer.fullName} - İzin Geçmişi"),
+        title: Text("${widget.trainer.fullName} - İzin Geçmişi", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.blueAccent,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
+        leading: const CustomBackButton(
+          color: Colors.white,
+          backgroundColor: Color(0x33FFFFFF),
+        ),
       ),
       body: viewModel.isLoading
           ? const Center(child: CircularProgressIndicator())

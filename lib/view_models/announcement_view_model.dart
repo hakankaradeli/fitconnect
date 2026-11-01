@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../services/api_service.dart';
+import '../repositories/announcement_repository.dart';
 import '../models/announcement_model.dart';
 
 class AnnouncementViewModel extends ChangeNotifier {
+  final AnnouncementRepository _repository;
+
+  AnnouncementViewModel({required AnnouncementRepository repository})
+      : _repository = repository;
+
   List<AnnouncementModel> _announcements = [];
   bool _isLoading = false;
 
@@ -16,15 +19,7 @@ class AnnouncementViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/announcements/gym/$gymId"),
-        headers: ApiService.getHeaders(),
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        _announcements = data.map((json) => AnnouncementModel.fromJson(json)).toList();
-      }
+      _announcements = await _repository.getAnnouncements(gymId);
     } catch (e) {
       debugPrint("Fetch announcements error: $e");
     } finally {
@@ -41,19 +36,15 @@ class AnnouncementViewModel extends ChangeNotifier {
     String targetRole = "ALL",
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse("${ApiService.baseUrl}/announcements/create"),
-        headers: ApiService.getHeaders(),
-        body: jsonEncode({
-          "gymId": gymId,
-          "title": title,
-          "content": content,
-          "imageUrl": imageUrl,
-          "targetRole": targetRole,
-        }),
+      final success = await _repository.createAnnouncement(
+        gymId: gymId,
+        title: title,
+        content: content,
+        imageUrl: imageUrl,
+        targetRole: targetRole,
       );
 
-      if (response.statusCode == 200) {
+      if (success) {
         await fetchAnnouncements(gymId);
         return true;
       }
@@ -64,14 +55,15 @@ class AnnouncementViewModel extends ChangeNotifier {
     }
   }
 
+  void hideAnnouncementLocally(int id) {
+    _announcements.removeWhere((item) => item.id == id);
+    notifyListeners();
+  }
+
   Future<bool> deleteAnnouncement(int id, int gymId) async {
     try {
-      final response = await http.delete(
-        Uri.parse("${ApiService.baseUrl}/announcements/$id"),
-        headers: ApiService.getHeaders(),
-      );
-
-      if (response.statusCode == 200) {
+      final success = await _repository.deleteAnnouncement(id);
+      if (success) {
         await fetchAnnouncements(gymId);
         return true;
       }

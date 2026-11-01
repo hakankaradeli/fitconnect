@@ -5,6 +5,7 @@ import '../../view_models/login_view_model.dart';
 import '../../utils/formatters.dart';
 import '../../constants/lesson_constants.dart';
 import 'package:flutter/services.dart';
+import '../widgets/custom_back_button.dart';
 
 class CreateMemberScreen extends StatefulWidget {
   const CreateMemberScreen({super.key});
@@ -19,7 +20,7 @@ class _CreateMemberScreenState extends State<CreateMemberScreen> {
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
-  
+
   String _selectedCategory = LessonConstants.pt;
   String? _selectedLessonType;
   int? _selectedTrainerId;
@@ -46,20 +47,26 @@ class _CreateMemberScreenState extends State<CreateMemberScreen> {
   }
 
   List<String> _getTypesForCategory(String category) {
-    if (category == LessonConstants.reformer) return LessonConstants.reformerTypes;
-    if (category == LessonConstants.yoga) return LessonConstants.yogaTypes;
-    return LessonConstants.ptTypes;
+    return LessonConstants.getSubTypes(category);
   }
 
   @override
   Widget build(BuildContext context) {
     final viewModel = context.watch<UserViewModel>();
-    final trainers = viewModel.users.where((u) => u.role == 'TRAINER').toList();
+    final trainers = viewModel.users.where((u) => u.isTrainerOrCanTeach).toList();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Yeni Üye Oluştur"),
+        title: const Text("Yeni Üye Oluştur", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.redAccent,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
+        leading: const CustomBackButton(
+          color: Colors.white,
+          backgroundColor: Color(0x33FFFFFF),
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -87,9 +94,9 @@ class _CreateMemberScreenState extends State<CreateMemberScreen> {
                 keyboardType: TextInputType.phone,
                 inputFormatters: [PhoneInputFormatter()],
                 decoration: const InputDecoration(
-                  labelText: "Telefon", 
+                  labelText: "Telefon",
                   border: OutlineInputBorder(),
-                  prefixText: "+90 ",
+                  hintText: "+90 5XX XXX XX XX",
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) return "Lütfen telefon girin";
@@ -98,35 +105,31 @@ class _CreateMemberScreenState extends State<CreateMemberScreen> {
                 },
               ),
               const SizedBox(height: 16),
-              
-              // 1. Ana Ders Grubu (PT / Reformer Pilates / Yoga)
+
               DropdownButtonFormField<String>(
                 value: _selectedCategory,
                 decoration: const InputDecoration(labelText: "Ana Ders Grubu", border: OutlineInputBorder()),
-                items: const [
-                  DropdownMenuItem(value: LessonConstants.pt, child: Text("PT")),
-                  DropdownMenuItem(value: LessonConstants.reformer, child: Text("Reformer Pilates")),
-                  DropdownMenuItem(value: LessonConstants.yoga, child: Text("Yoga")),
-                ],
+                items: LessonConstants.mainGroups
+                    .map((group) => DropdownMenuItem(value: group, child: Text(group)))
+                    .toList(),
                 onChanged: (val) {
                   if (val != null) {
                     setState(() {
                       _selectedCategory = val;
-                      _selectedLessonType = _getTypesForCategory(val).first;
+                      _selectedLessonType = LessonConstants.getSubTypes(val).first;
                     });
                   }
                 },
               ),
               const SizedBox(height: 16),
 
-              // 2. Alt Ders Tipi
               DropdownButtonFormField<String>(
                 value: _selectedLessonType,
                 decoration: InputDecoration(
-                  labelText: "$_selectedCategory - Alt Ders Tipi", 
+                  labelText: "$_selectedCategory - Alt Ders Tipi",
                   border: const OutlineInputBorder(),
                 ),
-                items: _getTypesForCategory(_selectedCategory)
+                items: LessonConstants.getSubTypes(_selectedCategory)
                     .map((type) => DropdownMenuItem(value: type, child: Text(type)))
                     .toList(),
                 onChanged: (val) => setState(() => _selectedLessonType = val),
@@ -134,7 +137,6 @@ class _CreateMemberScreenState extends State<CreateMemberScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Eğitmen Seçimi
               DropdownButtonFormField<int>(
                 value: _selectedTrainerId,
                 decoration: const InputDecoration(labelText: "Eğitmen Ata", border: OutlineInputBorder()),
@@ -167,7 +169,7 @@ class _CreateMemberScreenState extends State<CreateMemberScreen> {
                           bool success = await viewModel.createUser(
                             fullName: _nameController.text.trim(),
                             email: _emailController.text.trim(),
-                            phone: "+90 ${_phoneController.text.trim()}",
+                            phone: formatPhoneNumber(_phoneController.text),
                             password: _passwordController.text.trim(),
                             role: "MEMBER",
                             gymId: userData?['gymId'] ?? 1,

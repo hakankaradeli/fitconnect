@@ -1,0 +1,12 @@
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Sensitive environment and credentials
+.env
+.env.*
+!*.example
+src/main/resources/application-prod.properties
+*.key
+*.keystore
+*.jks

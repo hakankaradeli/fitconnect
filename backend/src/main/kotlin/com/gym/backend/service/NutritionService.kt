@@ -41,7 +41,8 @@ class NutritionService(
 
         // 2. Yöneticiye raporlama (İçerik ve onay incelemesi için)
         val adminMsg = "Beslenme Planı Güncellendi: ${trainer.fullName} eğitmeni, ${member.fullName} üyesi için yeni plan oluşturdu (${dto.dailyCalories} kcal, ${dto.protein}g Protein, ${dto.carbs}g Karbonhidrat, ${dto.fat}g Yağ)."
-        val admins = userRepository.findAllByGymIdAndRoleAndIsDeletedFalse(member.gym.id!!, UserRole.ADMIN)
+        val gymId = member.gym?.id
+        val admins = if (gymId != null) userRepository.findAllByGymIdAndRoleAndIsDeletedFalse(gymId, UserRole.ADMIN) else emptyList()
         admins.forEach { admin ->
             notificationRepository.save(Notification(user = admin, message = adminMsg))
         }
@@ -57,10 +58,7 @@ class NutritionService(
     }
 
     fun getMemberLatestPlan(memberId: Long): NutritionPlan? {
-        return nutritionRepository.findFirstByMemberIdAndExpiryDateAfterOrderByCreatedAtDesc(
-            memberId, 
-            LocalDateTime.now().minusYears(10)
-        )
+        return nutritionRepository.findFirstByMemberIdOrderByCreatedAtDesc(memberId)
     }
 
     fun getExpiredPlans(gymId: Long): List<Map<String, Any>> {
@@ -74,6 +72,23 @@ class NutritionService(
                 "trainerName" to plan.trainer.fullName,
                 "expiryDate" to plan.expiryDate.toString(),
                 "delayDays" to delayDays
+            )
+        }
+    }
+
+    fun getMembersWithoutNutritionPlan(gymId: Long): List<Map<String, Any>> {
+        val allMembers = userRepository.findAllByGymIdAndRoleAndIsDeletedFalse(gymId, UserRole.MEMBER)
+        val now = LocalDateTime.now()
+        val membersWithoutPlan = allMembers.filter { member ->
+            val activePlan = nutritionRepository.findFirstByMemberIdAndExpiryDateAfterOrderByCreatedAtDesc(member.id!!, now)
+            activePlan == null
+        }
+        return membersWithoutPlan.map { m ->
+            mapOf(
+                "memberId" to m.id!!,
+                "memberName" to m.fullName,
+                "email" to m.email,
+                "phone" to (m.phone ?: "")
             )
         }
     }

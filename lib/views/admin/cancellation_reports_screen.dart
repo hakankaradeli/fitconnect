@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../view_models/report_view_model.dart';
+import '../widgets/custom_back_button.dart';
 
 class CancellationReportsScreen extends StatefulWidget {
   const CancellationReportsScreen({super.key});
@@ -24,8 +26,16 @@ class _CancellationReportsScreenState extends State<CancellationReportsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("İptal Raporları"),
+        title: const Text("İptal Raporları", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.redAccent,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
+        leading: const CustomBackButton(
+          color: Colors.white,
+          backgroundColor: Color(0x33FFFFFF),
+        ),
       ),
       body: viewModel.isLoading
           ? const Center(child: CircularProgressIndicator())

@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../view_models/delegation_view_model.dart';
 import '../../view_models/user_view_model.dart';
 import '../../view_models/login_view_model.dart';
+import '../widgets/table_time_picker.dart';
+import '../widgets/custom_back_button.dart';
 
 class DelegationScreen extends StatefulWidget {
   const DelegationScreen({super.key});
@@ -32,8 +35,16 @@ class _DelegationScreenState extends State<DelegationScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Geçici Yetki Ver"),
+        title: const Text("Geçici Yetki Ver", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.redAccent,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
+        leading: const CustomBackButton(
+          color: Colors.white,
+          backgroundColor: Color(0x33FFFFFF),
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddDelegationDialog(context),
@@ -82,7 +93,7 @@ class _DelegationScreenState extends State<DelegationScreen> {
 
   void _showAddDelegationDialog(BuildContext context) {
     final userVM = context.read<UserViewModel>();
-    final trainers = userVM.users.where((u) => u.role == 'TRAINER' && u.isActive).toList();
+    final trainers = userVM.users.where((u) => u.isTrainerOrCanTeach && u.isActive).toList();
     
     int? selectedTrainerId;
     String? selectedPermission;
@@ -123,10 +134,15 @@ class _DelegationScreenState extends State<DelegationScreen> {
                   trailing: const Icon(Icons.calendar_today, size: 18),
                   onTap: () async {
                     final date = await showDatePicker(context: context, initialDate: startTime, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 30)));
-                    if (date != null) {
-                      final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(startTime));
+                    if (date != null && context.mounted) {
+                      final time = await showTableTimePicker(
+                        context: context,
+                        initialTime: TimeOfDay.fromDateTime(startTime),
+                        title: "Başlangıç Saati Seçimi",
+                        isLessonBooking: false,
+                      );
                       if (time != null) {
-                        setDialogState(() => startTime = DateTime(date.year, date.month, date.day, time.hour, time.minute));
+                        setDialogState(() => startTime = DateTime(date.year, date.month, date.day, time.hour, 0));
                       }
                     }
                   },
@@ -137,10 +153,15 @@ class _DelegationScreenState extends State<DelegationScreen> {
                   trailing: const Icon(Icons.calendar_today, size: 18),
                   onTap: () async {
                     final date = await showDatePicker(context: context, initialDate: endTime, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)));
-                    if (date != null) {
-                      final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(endTime));
+                    if (date != null && context.mounted) {
+                      final time = await showTableTimePicker(
+                        context: context,
+                        initialTime: TimeOfDay.fromDateTime(endTime),
+                        title: "Bitiş Saati Seçimi",
+                        isLessonBooking: false,
+                      );
                       if (time != null) {
-                        setDialogState(() => endTime = DateTime(date.year, date.month, date.day, time.hour, time.minute));
+                        setDialogState(() => endTime = DateTime(date.year, date.month, date.day, time.hour, 0));
                       }
                     }
                   },

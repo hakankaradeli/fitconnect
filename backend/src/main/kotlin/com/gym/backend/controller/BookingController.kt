@@ -1,9 +1,11 @@
 package com.gym.backend.controller
 
+import com.gym.backend.config.GlobalExceptionHandler
 import com.gym.backend.dto.BookingRequest
 import com.gym.backend.dto.BulkBookingRequest
 import com.gym.backend.model.Booking
 import com.gym.backend.service.BookingService
+import org.slf4j.LoggerFactory
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
@@ -14,34 +16,48 @@ import java.time.LocalDateTime
 @RequestMapping("/api/bookings")
 class BookingController(private val bookingService: BookingService) {
 
+    private val logger = LoggerFactory.getLogger(BookingController::class.java)
+
     @PostMapping("/create")
-    fun makeAppointment(@RequestBody request: BookingRequest): ResponseEntity<Any> {
+    fun makeAppointment(
+        @RequestBody request: BookingRequest,
+        authentication: org.springframework.security.core.Authentication?
+    ): ResponseEntity<Any> {
         return try {
+            val isAdmin = authentication?.authorities?.any { it.authority == "ROLE_ADMIN" || it.authority == "ROLE_SUPER_ADMIN" } ?: false
+            
             val booking = bookingService.createBooking(
                 request.memberId, 
                 request.trainerId, 
                 request.gymId, 
-                request.startTime
+                request.startTime,
+                ignoreRules = isAdmin
             )
             ResponseEntity.ok(booking)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
     @PostMapping("/create-bulk")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'PERM_MANAGE_SCHEDULE')")
-    fun makeBulkAppointments(@RequestBody request: BulkBookingRequest): ResponseEntity<Any> {
+    fun makeBulkAppointments(
+        @RequestBody request: BulkBookingRequest,
+        authentication: org.springframework.security.core.Authentication?
+    ): ResponseEntity<Any> {
         return try {
+            val isAdmin = authentication?.authorities?.any { it.authority == "ROLE_ADMIN" || it.authority == "ROLE_SUPER_ADMIN" } ?: false
+            
             val bookings = bookingService.createBulkBookings(
                 request.memberId,
                 request.trainerId,
                 request.gymId,
-                request.startTimes
+                request.startTimes,
+                ignoreRules = isAdmin
             )
             ResponseEntity.ok(bookings)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -53,12 +69,28 @@ class BookingController(private val bookingService: BookingService) {
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) end: LocalDateTime
     ): ResponseEntity<Any> {
         return try {
-            println("Ders programi istegi: TrainerId=$trainerId, Start=$start, End=$end")
+            logger.debug("Ders programı isteği: TrainerId={}, Start={}, End={}", trainerId, start, end)
             val schedule = bookingService.getTrainerSchedule(trainerId, start, end)
             ResponseEntity.ok(schedule)
         } catch (e: Exception) {
-            println("Program yukleme hatasi (Server): ${e.message}")
-            ResponseEntity.status(500).body(mapOf("error" to e.message))
+            logger.error("Ders programı yükleme hatası: {}", e.message, e)
+            ResponseEntity.status(500).body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
+        }
+    }
+
+    @GetMapping("/gym-schedule/{gymId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ADMIN', 'ROLE_SUPER_ADMIN', 'SUPER_ADMIN')")
+    fun getGymSchedule(
+        @PathVariable gymId: Long,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) start: LocalDateTime,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) end: LocalDateTime
+    ): ResponseEntity<Any> {
+        return try {
+            val schedule = bookingService.getGymWeeklySchedule(gymId, start, end)
+            ResponseEntity.ok(schedule)
+        } catch (e: Exception) {
+            logger.error("Salon haftalık program yükleme hatası: {}", e.message, e)
+            ResponseEntity.status(500).body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -75,7 +107,18 @@ class BookingController(private val bookingService: BookingService) {
             val booking = bookingService.proposeBookingChange(bookingId, newStartTime, isByAdmin)
             ResponseEntity.ok(booking)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
+        }
+    }
+
+    @PutMapping("/refund/{bookingId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'PERM_MANAGE_SCHEDULE')")
+    fun refundCompletedBooking(@PathVariable bookingId: Long): ResponseEntity<Any> {
+        return try {
+            val booking = bookingService.refundCompletedBooking(bookingId)
+            ResponseEntity.ok(booking)
+        } catch (e: Exception) {
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -86,7 +129,7 @@ class BookingController(private val bookingService: BookingService) {
             val booking = bookingService.approveBooking(bookingId)
             ResponseEntity.ok(booking)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -100,7 +143,7 @@ class BookingController(private val bookingService: BookingService) {
             val booking = bookingService.rejectBooking(bookingId, cancelledById, reason)
             ResponseEntity.ok(booking)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -137,7 +180,7 @@ class BookingController(private val bookingService: BookingService) {
             val booking = bookingService.changeBookingTrainer(bookingId, newTrainerId, isByAdmin)
             ResponseEntity.ok(booking)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -147,7 +190,7 @@ class BookingController(private val bookingService: BookingService) {
             val history = bookingService.getMemberBookings(memberId)
             ResponseEntity.ok(history)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -158,7 +201,7 @@ class BookingController(private val bookingService: BookingService) {
             val pending = bookingService.getPendingTrainerBookings(trainerId)
             ResponseEntity.ok(pending)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -169,7 +212,7 @@ class BookingController(private val bookingService: BookingService) {
             val booking = bookingService.approveBooking(bookingId)
             ResponseEntity.ok(booking)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -177,14 +220,14 @@ class BookingController(private val bookingService: BookingService) {
     @PreAuthorize("hasAnyAuthority('ROLE_TRAINER', 'ROLE_ADMIN')")
     fun trainerReject(
         @PathVariable bookingId: Long,
-        @RequestParam(required = false) reason: String?
+        @RequestParam(required = false) reason: String?,
+        @RequestParam(required = false, defaultValue = "false") isDirectCancel: Boolean
     ): ResponseEntity<Any> {
         return try {
-            val auth = org.springframework.security.core.context.SecurityContextHolder.getContext().authentication
-            val user = bookingService.trainerRejectBooking(bookingId, 0L, reason) // trainerRejectBooking handles finding/updating
+            val user = bookingService.trainerRejectBooking(bookingId, 0L, reason, isDirectCancel)
             ResponseEntity.ok(user)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -195,7 +238,7 @@ class BookingController(private val bookingService: BookingService) {
             val pendingList = bookingService.getAdminPendingBookings(gymId)
             ResponseEntity.ok(pendingList)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -205,7 +248,7 @@ class BookingController(private val bookingService: BookingService) {
             val booking = bookingService.getBookingById(bookingId)
             ResponseEntity.ok(booking)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -219,7 +262,7 @@ class BookingController(private val bookingService: BookingService) {
             val booking = bookingService.confirmAttendance(bookingId, willAttend)
             ResponseEntity.ok(booking)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -233,7 +276,7 @@ class BookingController(private val bookingService: BookingService) {
             val slots = bookingService.getAvailableSlots(trainerId, gymId, date)
             ResponseEntity.ok(slots)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -246,7 +289,7 @@ class BookingController(private val bookingService: BookingService) {
             val trainers = bookingService.getAvailableTrainersForSlot(gymId, startTime)
             ResponseEntity.ok(trainers)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -260,7 +303,7 @@ class BookingController(private val bookingService: BookingService) {
             val booking = bookingService.addPerformedExercises(bookingId, exercises)
             ResponseEntity.ok(booking)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 }

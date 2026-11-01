@@ -1,17 +1,22 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../services/api_service.dart';
+import '../repositories/nutrition_repository.dart';
 import '../models/nutrition_model.dart';
 
 class NutritionViewModel extends ChangeNotifier {
+  final NutritionRepository _repository;
+
+  NutritionViewModel({required NutritionRepository repository})
+      : _repository = repository;
+
   NutritionModel? _activePlan;
   List<dynamic> _expiredReports = [];
+  List<dynamic> _membersWithoutPlan = [];
   bool _isLoading = false;
   String? _errorMessage;
 
   NutritionModel? get activePlan => _activePlan;
   List<dynamic> get expiredReports => _expiredReports;
+  List<dynamic> get membersWithoutPlan => _membersWithoutPlan;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
@@ -21,17 +26,7 @@ class NutritionViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/nutrition/my-plan/$memberId"),
-        headers: ApiService.getHeaders(),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        _activePlan = NutritionModel.fromJson(data);
-      } else {
-        _activePlan = null;
-      }
+      _activePlan = await _repository.getMyPlan(memberId);
     } catch (e) {
       _errorMessage = "Beslenme planı alınamadı: $e";
       _activePlan = null;
@@ -54,22 +49,19 @@ class NutritionViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final url = "${ApiService.baseUrl}/nutrition/assign?memberId=$memberId&trainerId=$trainerId";
-      final response = await http.post(
-        Uri.parse(url),
-        headers: ApiService.getHeaders(),
-        body: jsonEncode({
-          "dailyCalories": dailyCalories,
-          "protein": protein,
-          "carbs": carbs,
-          "fat": fat,
-          "meals": meals,
-        }),
+      final success = await _repository.assignPlan(
+        memberId: memberId,
+        trainerId: trainerId,
+        dailyCalories: dailyCalories,
+        protein: protein,
+        carbs: carbs,
+        fat: fat,
+        meals: meals,
       );
 
       _isLoading = false;
       notifyListeners();
-      return response.statusCode == 200;
+      return success;
     } catch (e) {
       debugPrint("Assign plan error: $e");
       _isLoading = false;
@@ -82,16 +74,10 @@ class NutritionViewModel extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/nutrition/member-plan/$memberId"),
-        headers: ApiService.getHeaders(),
-      );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        _isLoading = false;
-        notifyListeners();
-        return NutritionModel.fromJson(data);
-      }
+      final plan = await _repository.getMemberPlan(memberId);
+      _isLoading = false;
+      notifyListeners();
+      return plan;
     } catch (e) {
       debugPrint("Fetch member plan error: $e");
     } finally {
@@ -105,15 +91,22 @@ class NutritionViewModel extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/nutrition/expired-reports/$gymId"),
-        headers: ApiService.getHeaders(),
-      );
-      if (response.statusCode == 200) {
-        _expiredReports = jsonDecode(response.body);
-      }
+      _expiredReports = await _repository.getExpiredReports(gymId);
     } catch (e) {
       debugPrint("Fetch expired nutrition reports error: $e");
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> fetchMembersWithoutPlan(int gymId) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      _membersWithoutPlan = await _repository.getMembersWithoutPlan(gymId);
+    } catch (e) {
+      debugPrint("Fetch members without plan error: $e");
     } finally {
       _isLoading = false;
       notifyListeners();

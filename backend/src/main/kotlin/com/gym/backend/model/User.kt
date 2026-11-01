@@ -2,7 +2,7 @@ package com.gym.backend.model
 
 import jakarta.persistence.*
 
-enum class UserRole { ADMIN, TRAINER, MEMBER }
+enum class UserRole { SUPER_ADMIN, ADMIN, TRAINER, MEMBER }
 
 @Entity
 @Table(name = "users")
@@ -11,8 +11,9 @@ class User(
     val id: Long? = null,
 
     @Column(unique = true, nullable = false)
-    val email: String,
+    var email: String,
 
+    @com.fasterxml.jackson.annotation.JsonIgnore
     @Column(nullable = false)
     var passwordHash: String,
 
@@ -21,11 +22,11 @@ class User(
     var phone: String? = null,
 
     @Enumerated(EnumType.STRING)
-    val role: UserRole, // ADMIN, TRAINER, MEMBER
+    var role: UserRole, // ADMIN, TRAINER, MEMBER
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "gym_id", nullable = false)
-    val gym: Gym, // Multi-Tenant bağlantısı
+    @JoinColumn(name = "gym_id", nullable = true)
+    var gym: Gym? = null, // Multi-Tenant bağlantısı (İsteğe bağlı - QR ile salon kaydı yapılabilir)
 
     // Üye için atanan eğitmen ve ders tipi
     @ManyToOne(fetch = FetchType.LAZY)
@@ -62,5 +63,14 @@ class User(
 
     var freezeStart: java.time.LocalDate? = null,
     var freezeEnd: java.time.LocalDate? = null,
-    var freezeReason: String? = null
+    var freezeReason: String? = null,
+
+    @Column(name = "created_at", nullable = true)
+    var createdAt: java.time.LocalDateTime? = java.time.LocalDateTime.now(),
+
+    @Transient
+    var appRegistrationDate: java.time.LocalDateTime? = null,
+
+    @Transient
+    var gymRegistrationDate: java.time.LocalDateTime? = null
 )

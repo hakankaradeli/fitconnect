@@ -1,5 +1,6 @@
 package com.gym.backend.controller
 
+import com.gym.backend.config.GlobalExceptionHandler
 import com.gym.backend.dto.UserCreateRequest
 import com.gym.backend.service.UserService
 import org.springframework.http.ResponseEntity
@@ -17,18 +18,18 @@ class UserController(private val userService: UserService) {
             userService.createUser(request)
             ResponseEntity.ok(mapOf("message" to "Üye başarıyla oluşturuldu"))
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
     @GetMapping("/list/{gymId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MEMBER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MEMBER', 'TRAINER')")
     fun getUsers(@PathVariable gymId: Long): ResponseEntity<Any> {
         return try {
             val users = userService.getUsersByGym(gymId)
             ResponseEntity.ok(users)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -39,7 +40,7 @@ class UserController(private val userService: UserService) {
             val users = userService.getDeletedUsersByGym(gymId)
             ResponseEntity.ok(users)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -61,10 +62,13 @@ class UserController(private val userService: UserService) {
                 "profileImageUrl" to user.profileImageUrl,
                 "instagram" to user.instagram,
                 "linkedin" to user.linkedin,
-                "twitter" to user.twitter
+                "twitter" to user.twitter,
+                "createdAt" to user.createdAt?.toString(),
+                "appRegistrationDate" to user.appRegistrationDate?.toString(),
+                "gymRegistrationDate" to user.gymRegistrationDate?.toString()
             ))
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -92,7 +96,7 @@ class UserController(private val userService: UserService) {
                 "twitter" to updatedUser.twitter
             ))
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -107,7 +111,7 @@ class UserController(private val userService: UserService) {
             val updatedUser = userService.updateMemberAssignment(memberId, trainerId, lessonType)
             ResponseEntity.ok(updatedUser)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -121,7 +125,7 @@ class UserController(private val userService: UserService) {
             val updatedUser = userService.updateTrainerCanTeach(trainerId, canTeach)
             ResponseEntity.ok(updatedUser)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -137,7 +141,7 @@ class UserController(private val userService: UserService) {
             val updatedUser = userService.freezeMember(memberId, start, end, reason)
             ResponseEntity.ok(updatedUser)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -148,7 +152,7 @@ class UserController(private val userService: UserService) {
             val updatedUser = userService.unfreezeMember(memberId)
             ResponseEntity.ok(updatedUser)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -162,7 +166,25 @@ class UserController(private val userService: UserService) {
             userService.deleteUser(userId, replacementTrainerId)
             ResponseEntity.ok(mapOf("message" to "Kullanıcı başarıyla silindi"))
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
+        }
+    }
+
+    @DeleteMapping("/self-delete/{userId}")
+    @PreAuthorize("isAuthenticated()")
+    fun selfDeleteAccount(
+        @PathVariable userId: Long,
+        servletRequest: jakarta.servlet.http.HttpServletRequest
+    ): ResponseEntity<Any> {
+        return try {
+            val xForwardedFor = servletRequest.getHeader("X-Forwarded-For")
+            val clientIp = if (!xForwardedFor.isNullOrBlank()) xForwardedFor.split(",").first().trim() else servletRequest.remoteAddr
+            val userAgent = servletRequest.getHeader("User-Agent")
+
+            userService.archiveAndDeleteUser(userId, clientIp, userAgent)
+            ResponseEntity.ok(mapOf("message" to "Hesabınız başarıyla silindi ve 200 günlük yasal arşive kaldırıldı."))
+        } catch (e: Exception) {
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -176,7 +198,7 @@ class UserController(private val userService: UserService) {
             val updatedUser = userService.toggleUserStatus(userId, replacementTrainerId)
             ResponseEntity.ok(updatedUser)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -192,7 +214,7 @@ class UserController(private val userService: UserService) {
             val updatedUser = userService.setTrainerLeave(userId, start, end, replacementTrainerId)
             ResponseEntity.ok(updatedUser)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -209,7 +231,48 @@ class UserController(private val userService: UserService) {
             userService.cancelLeave(leaveId)
             ResponseEntity.ok(mapOf("message" to "İzin iptal edildi"))
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
+        }
+    }
+
+    @PostMapping("/assign-gym-by-qr")
+    @PreAuthorize("permitAll()")
+    fun assignGymByQr(
+        @RequestParam userId: Long,
+        @RequestParam gymId: Long,
+        @RequestParam(required = false) role: String?
+    ): ResponseEntity<Any> {
+        return try {
+            val updatedUser = userService.assignUserToGym(userId, gymId, role)
+            val roleText = if (updatedUser.role == com.gym.backend.model.UserRole.MEMBER) "Üye" else "Eğitmen"
+            ResponseEntity.ok(mapOf(
+                "message" to "${updatedUser.fullName} ($roleText) ${updatedUser.gym?.name} salonunuza başarıyla eklendi!",
+                "user" to updatedUser
+            ))
+        } catch (e: Exception) {
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
+        }
+    }
+
+    @GetMapping("/registrations/gym/{gymId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    fun getGymRegistrations(@PathVariable gymId: Long): ResponseEntity<Any> {
+        return try {
+            val list = userService.getGymRegistrations(gymId)
+            ResponseEntity.ok(list)
+        } catch (e: Exception) {
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
+        }
+    }
+
+    @GetMapping("/registrations/app")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    fun getAppRegistrations(@RequestParam(required = false) gymId: Long?): ResponseEntity<Any> {
+        return try {
+            val list = userService.getAppRegistrations(gymId)
+            ResponseEntity.ok(list)
+        } catch (e: Exception) {
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 }

@@ -95,6 +95,41 @@ class _AnnouncementBoardState extends State<AnnouncementBoard> {
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                 ),
               ),
+              InkWell(
+                onTap: () {
+                  final userData = context.read<LoginViewModel>().userData;
+                  final role = userData?['role'];
+
+                  showDialog(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: Text(role == 'ADMIN' || role == 'SUPER_ADMIN' ? "Duyuruyu Sil" : "Duyuruyu Gizle"),
+                      content: Text(role == 'ADMIN' || role == 'SUPER_ADMIN'
+                          ? "Bu duyuruyu silmek istediğinize emin misiniz? (Tüm herkesten silinir)"
+                          : "Bu duyuruyu ekranınızdan gizlemek istiyor musunuz?"),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("İptal")),
+                        TextButton(
+                          onPressed: () {
+                            if (role == 'ADMIN' || role == 'SUPER_ADMIN') {
+                              final gymId = userData?['gymId'];
+                              if (gymId != null) {
+                                final int parsedGymId = gymId is int ? gymId : (int.tryParse(gymId.toString()) ?? 0);
+                                context.read<AnnouncementViewModel>().deleteAnnouncement(item.id, parsedGymId);
+                              }
+                            } else {
+                              context.read<AnnouncementViewModel>().hideAnnouncementLocally(item.id);
+                            }
+                            Navigator.pop(ctx);
+                          },
+                          child: Text(role == 'ADMIN' || role == 'SUPER_ADMIN' ? "SİL" : "GİZLE", style: const TextStyle(color: Colors.red)),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                child: const Icon(Icons.close_rounded, size: 16, color: Colors.grey),
+              ),
             ],
           ),
           const SizedBox(height: 8),

@@ -3,6 +3,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:provider/provider.dart';
 import '../../view_models/trainer_qr_view_model.dart';
 import '../../view_models/login_view_model.dart';
+import '../widgets/custom_back_button.dart';
 
 class QrGeneratorScreen extends StatefulWidget {
   final int? bookingId;
@@ -22,7 +23,7 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
       final userData = context.read<LoginViewModel>().userData;
       if (userData != null) {
         context.read<TrainerQrViewModel>().startQrGenerator(
-          userData['userId'].toString(), 
+          userData['userId'].toString(),
           userData['gymId'].toString(),
           bookingId: widget.bookingId,
         );
@@ -40,17 +41,19 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 60),
-        content: const Text(
-          "Ders başlamıştır, iyi dersler! 🏋️‍♂️",
+        content: Text(
+          viewModel.completedMemberName != null
+              ? "${viewModel.completedMemberName} ile ders başlamıştır, iyi dersler! 🏋️‍♂️"
+              : "Ders başlamıştır, iyi dersler! 🏋️‍♂️",
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         actions: [
           TextButton(
             onPressed: () {
               viewModel.resetSessionStarted();
-              Navigator.pop(context); // Dialogu kapat
-              Navigator.pop(context); // QR ekranını kapat ve Dashboard'a dön
+              Navigator.pop(context);
+              Navigator.pop(context);
             },
             child: const Text("Tamam", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           )
@@ -75,6 +78,7 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
         title: const Text("Ders Başlat", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         elevation: 0,
+        leading: const CustomBackButton(),
         iconTheme: const IconThemeData(color: Colors.black),
       ),
       body: Center(
@@ -86,8 +90,7 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 30),
-            
-            // QR Kod Çerçevesi
+
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -103,10 +106,9 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                 backgroundColor: Colors.white,
               ),
             ),
-            
+
             const SizedBox(height: 30),
-            
-            // Geri Sayım Göstergesi
+
             Stack(
               alignment: Alignment.center,
               children: [

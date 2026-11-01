@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../view_models/notification_view_model.dart';
 import '../../view_models/announcement_view_model.dart';
 import '../../view_models/login_view_model.dart';
+import '../widgets/custom_back_button.dart';
 
 class BulkMessageScreen extends StatefulWidget {
   const BulkMessageScreen({super.key});
@@ -14,7 +15,7 @@ class BulkMessageScreen extends StatefulWidget {
 class _BulkMessageScreenState extends State<BulkMessageScreen> {
   final TextEditingController _titleController = TextEditingController(text: "Salon Duyurusu");
   final TextEditingController _messageController = TextEditingController();
-  String _selectedTarget = "ALL"; // ALL, MEMBER, TRAINER
+  String _selectedTarget = "ALL";
   bool _publishToBoard = true;
   bool _isSending = false;
 
@@ -37,6 +38,7 @@ class _BulkMessageScreenState extends State<BulkMessageScreen> {
         title: const Text("Duyuru & Mesaj Gönder", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         elevation: 0,
+        leading: const CustomBackButton(),
         iconTheme: const IconThemeData(color: Colors.black),
       ),
       body: SingleChildScrollView(
@@ -142,8 +144,8 @@ class _BulkMessageScreenState extends State<BulkMessageScreen> {
                     }
                   }
                 },
-                icon: _isSending 
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                icon: _isSending
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                     : const Icon(Icons.campaign_rounded),
                 label: Text(_isSending ? "Yayınlanıyor..." : "YAYINLA VE GÖNDER"),
               ),

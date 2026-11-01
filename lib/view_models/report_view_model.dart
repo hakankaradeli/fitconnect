@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../services/api_service.dart';
+import '../repositories/report_repository.dart';
 
 class ReportViewModel extends ChangeNotifier {
+  final ReportRepository _repository;
+
+  ReportViewModel({required ReportRepository repository})
+      : _repository = repository;
+
   List<dynamic> _topCancelledMembers = [];
   List<dynamic> _topCancelledTrainersByOthers = [];
   List<dynamic> _topCancellingTrainers = [];
@@ -25,17 +28,10 @@ class ReportViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final base = ApiService.baseUrl;
-      final headers = ApiService.getHeaders();
-
-      final res1 = await http.get(Uri.parse("$base/bookings/reports/top-cancelled-members"), headers: headers);
-      final res2 = await http.get(Uri.parse("$base/bookings/reports/top-cancelled-trainers-by-others"), headers: headers);
-      final res3 = await http.get(Uri.parse("$base/bookings/reports/top-cancelling-trainers"), headers: headers);
-
-      if (res1.statusCode == 200) _topCancelledMembers = jsonDecode(res1.body);
-      if (res2.statusCode == 200) _topCancelledTrainersByOthers = jsonDecode(res2.body);
-      if (res3.statusCode == 200) _topCancellingTrainers = jsonDecode(res3.body);
-
+      final result = await _repository.getCancellationReports();
+      _topCancelledMembers = result.topCancelledMembers;
+      _topCancelledTrainersByOthers = result.topCancelledTrainersByOthers;
+      _topCancellingTrainers = result.topCancellingTrainers;
     } catch (e) {
       debugPrint("Report fetch error: $e");
     } finally {
@@ -48,13 +44,7 @@ class ReportViewModel extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/admin/reports/monthly?gymId=$gymId&month=$month"),
-        headers: ApiService.getHeaders(),
-      );
-      if (response.statusCode == 200) {
-        _monthlyReport = jsonDecode(response.body);
-      }
+      _monthlyReport = await _repository.getMonthlyReport(gymId, month);
     } catch (e) {
       debugPrint("Monthly report error: $e");
     } finally {
@@ -73,14 +63,7 @@ class ReportViewModel extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     try {
-      String format(DateTime dt) => dt.toIso8601String().split('.').first;
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/admin/reports/unperformed-range?gymId=$gymId&start=${format(start)}&end=${format(end)}"),
-        headers: ApiService.getHeaders(),
-      );
-      if (response.statusCode == 200) {
-        _dailyUnperformedReport = jsonDecode(response.body);
-      }
+      _dailyUnperformedReport = await _repository.getUnperformedRangeReport(gymId, start, end);
     } catch (e) {
       debugPrint("Fetch unperformed range error: $e");
     } finally {
@@ -93,13 +76,7 @@ class ReportViewModel extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/admin/reports/trainer-complaints?gymId=$gymId"),
-        headers: ApiService.getHeaders(),
-      );
-      if (response.statusCode == 200) {
-        _trainerComplaints = jsonDecode(response.body);
-      }
+      _trainerComplaints = await _repository.getTrainerComplaints(gymId);
     } catch (e) {
       debugPrint("Fetch trainer complaints error: $e");
     } finally {

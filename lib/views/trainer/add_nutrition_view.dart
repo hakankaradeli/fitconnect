@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../../view_models/nutrition_view_model.dart';
 import '../../view_models/user_view_model.dart';
 import '../../view_models/login_view_model.dart';
-import '../../models/user_model.dart';
+import '../widgets/custom_back_button.dart';
 
 class TrainerAddNutritionView extends StatefulWidget {
   const TrainerAddNutritionView({super.key});
@@ -28,7 +28,12 @@ class _TrainerAddNutritionViewState extends State<TrainerAddNutritionView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userData = context.read<LoginViewModel>().userData;
       if (userData != null) {
-        context.read<UserViewModel>().fetchUsers(userData['gymId']);
+        final gymId = int.tryParse(userData['gymId']?.toString() ?? '0') ?? 0;
+        if (gymId > 0) {
+          context.read<UserViewModel>().fetchUsers(gymId);
+        } else {
+          debugPrint("TrainerAddNutritionView: gymId is missing or 0");
+        }
       }
     });
   }
@@ -52,22 +57,53 @@ class _TrainerAddNutritionViewState extends State<TrainerAddNutritionView> {
     }
   }
 
+  void _editMeal(int index) {
+    final currentMeal = _meals[index];
+    final editController = TextEditingController(text: currentMeal);
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text("Öğünü Düzenle", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: editController,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: "Öğün içeriğini güncelleyin...",
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            isDense: true,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text("İptal", style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+            onPressed: () {
+              if (editController.text.trim().isNotEmpty) {
+                setState(() {
+                  _meals[index] = editController.text.trim();
+                });
+                Navigator.pop(dialogContext);
+              }
+            },
+            child: const Text("KAYDET"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final userVM = context.watch<UserViewModel>();
     final userData = context.read<LoginViewModel>().userData;
-    final trainerId = userData?['userId'];
+    final trainerId = userData?['userId']?.toString();
 
-    // Üyeleri çek: Öncelikle bu eğitmene atanmış aktif üyeler, yoksa salonun tüm aktif üyeleri
-    final trainerMembers = userVM.users
-        .where((u) => u.role == 'MEMBER' && u.isActive && u.assignedTrainerId == trainerId?.toString())
-        .toList();
-
-    final allGymMembers = userVM.users
-        .where((u) => u.role == 'MEMBER' && u.isActive)
-        .toList();
-
-    final assignedMembers = trainerMembers.isNotEmpty ? trainerMembers : allGymMembers;
+    final assignedMembers = userVM.users.where((u) => u.role == 'MEMBER' && u.isActive).toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FD),
@@ -75,6 +111,7 @@ class _TrainerAddNutritionViewState extends State<TrainerAddNutritionView> {
         title: const Text("Beslenme Planı Tanımla", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         elevation: 0,
+        leading: const CustomBackButton(),
         iconTheme: const IconThemeData(color: Colors.black),
       ),
       body: userVM.isLoading
@@ -84,19 +121,58 @@ class _TrainerAddNutritionViewState extends State<TrainerAddNutritionView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (userVM.errorMessage != null)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      color: Colors.red.shade50,
+                      child: Text(userVM.errorMessage!, style: const TextStyle(color: Colors.red)),
+                    ),
                   const Text("Üye Seçimi", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<int>(
                     value: _selectedMemberId,
                     isExpanded: true,
                     decoration: InputDecoration(
-                      hintText: assignedMembers.isEmpty ? "Aktif üye bulunamadı" : "Beslenme planı yazılacak üyeyi seçin",
+                      hintText: assignedMembers.isEmpty ? "Aktif üye bulunamadı (Önce üye atayın)" : "Beslenme planı yazılacak üyeyi seçin",
                       fillColor: Colors.white,
                       filled: true,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                     ),
-                    items: assignedMembers.map((m) => DropdownMenuItem(value: int.parse(m.id), child: Text(m.fullName))).toList(),
-                    onChanged: (val) => setState(() => _selectedMemberId = val),
+                    items: assignedMembers.map((m) {
+                      final parsedId = int.tryParse(m.id.toString()) ?? 0;
+                      return DropdownMenuItem<int>(
+                        value: parsedId,
+                        child: Text(m.fullName),
+                      );
+                    }).toList(),
+                    onChanged: (val) async {
+                      setState(() {
+                        _selectedMemberId = val;
+                      });
+                      if (val != null) {
+                        final nutritionVM = context.read<NutritionViewModel>();
+                        final plan = await nutritionVM.fetchMemberPlan(val);
+                        if (plan != null && mounted) {
+                          setState(() {
+                            _caloriesController.text = plan.dailyCalories.toString();
+                            _proteinController.text = plan.protein.toString();
+                            _carbsController.text = plan.carbs.toString();
+                            _fatController.text = plan.fat.toString();
+                            _meals.clear();
+                            _meals.addAll(plan.meals);
+                          });
+                        } else if (mounted) {
+                          setState(() {
+                            _caloriesController.clear();
+                            _proteinController.clear();
+                            _carbsController.clear();
+                            _fatController.clear();
+                            _meals.clear();
+                          });
+                        }
+                      }
+                    },
                   ),
                   const SizedBox(height: 20),
 
@@ -192,9 +268,20 @@ class _TrainerAddNutritionViewState extends State<TrainerAddNutritionView> {
                 child: ListTile(
                   dense: true,
                   title: Text(_meals[index], style: const TextStyle(fontWeight: FontWeight.bold)),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 20),
-                    onPressed: () => setState(() => _meals.removeAt(index)),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit_rounded, color: Colors.blue, size: 20),
+                        tooltip: "Düzenle",
+                        onPressed: () => _editMeal(index),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 20),
+                        tooltip: "Sil",
+                        onPressed: () => setState(() => _meals.removeAt(index)),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -245,9 +332,12 @@ class _TrainerAddNutritionViewState extends State<TrainerAddNutritionView> {
                   }
 
                   setState(() => _isSaving = true);
+
+                  final parsedTrainerId = int.tryParse(trainerId?.toString() ?? '') ?? 1;
+
                   final success = await context.read<NutritionViewModel>().assignPlan(
                     memberId: _selectedMemberId!,
-                    trainerId: trainerId!,
+                    trainerId: parsedTrainerId,
                     dailyCalories: cal,
                     protein: p,
                     carbs: c,

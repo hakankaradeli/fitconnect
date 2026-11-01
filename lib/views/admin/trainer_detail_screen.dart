@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../models/user_model.dart';
 import '../../view_models/user_view_model.dart';
@@ -6,7 +7,10 @@ import '../../constants/lesson_constants.dart';
 import '../trainer/trainer_schedule_view.dart';
 import 'member_detail_screen.dart';
 import 'trainer_rates_screen.dart';
+import '../../utils/formatters.dart';
+import '../../view_models/theme_view_model.dart';
 import 'package:intl/intl.dart';
+import '../widgets/custom_back_button.dart';
 
 class TrainerDetailScreen extends StatefulWidget {
   final UserModel trainer;
@@ -19,42 +23,70 @@ class TrainerDetailScreen extends StatefulWidget {
 
 class _TrainerDetailScreenState extends State<TrainerDetailScreen> {
   late UserModel _currentTrainer;
+  Map<String, dynamic>? _trainerStats;
+  bool _isLoadingStats = true;
 
   @override
   void initState() {
     super.initState();
     _currentTrainer = widget.trainer;
     _refreshTrainer();
+    _fetchStats();
+  }
+
+  Future<void> _fetchStats() async {
+    final vm = context.read<UserViewModel>();
+    final stats = await vm.getTrainerStats(int.parse(_currentTrainer.id));
+    if (mounted) {
+      setState(() {
+        _trainerStats = stats;
+        _isLoadingStats = false;
+      });
+    }
   }
 
   void _refreshTrainer() {
-    // Listeden en güncel halini bul
     final vm = context.read<UserViewModel>();
     try {
       setState(() {
         _currentTrainer = vm.users.firstWhere((u) => u.id == widget.trainer.id);
       });
     } catch (e) {
-      // Bulunamazsa mevcutla devam et
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final userVM = context.watch<UserViewModel>();
-    // Eğer VM güncellendiyse yerel trainer bilgisini de tazele
+    final themeVM = context.watch<ThemeViewModel>();
+    final primaryColor = themeVM.primaryColor;
+    final onPrimary = themeVM.onPrimaryColor;
+
     _refreshTrainer();
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_currentTrainer.fullName),
-        backgroundColor: Colors.redAccent,
+        title: Text(
+          _currentTrainer.fullName,
+          style: TextStyle(color: onPrimary, fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        backgroundColor: primaryColor,
+        foregroundColor: onPrimary,
+        elevation: 0,
+        centerTitle: true,
+        systemOverlayStyle: primaryColor.computeLuminance() > 0.45
+            ? SystemUiOverlayStyle.dark
+            : SystemUiOverlayStyle.light,
+        leading: CustomBackButton(
+          color: onPrimary,
+          backgroundColor: onPrimary.withValues(alpha: 0.18),
+        ),
       ),
       body: SingleChildScrollView(
         child: Column(
           children: [
             _buildProfileHeader(),
-            _buildLeaveInfo(context), // İzin Bilgisi ve İptal Butonu
+            _buildLeaveInfo(context),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: ElevatedButton.icon(
@@ -131,51 +163,29 @@ class _TrainerDetailScreenState extends State<TrainerDetailScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("PT Ders Türleri:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  children: LessonConstants.ptTypes.map((type) => FilterChip(
-                    label: Text(type, style: const TextStyle(fontSize: 12)),
-                    selected: tempSelected.contains(type),
-                    selectedColor: Colors.blue.shade100,
-                    onSelected: (val) => setDialogState(() {
-                      if (val) tempSelected.add(type); else tempSelected.remove(type);
-                    }),
-                  )).toList(),
-                ),
-                const SizedBox(height: 12),
-
-                const Text("Reformer Pilates Ders Türleri:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.purple)),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  children: LessonConstants.reformerTypes.map((type) => FilterChip(
-                    label: Text(type, style: const TextStyle(fontSize: 12)),
-                    selected: tempSelected.contains(type),
-                    selectedColor: Colors.purple.shade100,
-                    onSelected: (val) => setDialogState(() {
-                      if (val) tempSelected.add(type); else tempSelected.remove(type);
-                    }),
-                  )).toList(),
-                ),
-                const SizedBox(height: 12),
-
-                const Text("Yoga Ders Türleri:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  children: LessonConstants.yogaTypes.map((type) => FilterChip(
-                    label: Text(type, style: const TextStyle(fontSize: 12)),
-                    selected: tempSelected.contains(type),
-                    selectedColor: Colors.teal.shade100,
-                    onSelected: (val) => setDialogState(() {
-                      if (val) tempSelected.add(type); else tempSelected.remove(type);
-                    }),
-                  )).toList(),
-                ),
-              ],
+              children: LessonConstants.mainGroups.map((group) {
+                final subTypes = LessonConstants.getSubTypes(group);
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("$group Ders Türleri:", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: subTypes.map((type) => FilterChip(
+                        label: Text(type, style: const TextStyle(fontSize: 12)),
+                        selected: tempSelected.contains(type),
+                        selectedColor: Colors.indigo.shade100,
+                        onSelected: (val) => setDialogState(() {
+                          if (val) tempSelected.add(type); else tempSelected.remove(type);
+                        }),
+                      )).toList(),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                );
+              }).toList(),
             ),
           ),
           actions: [
@@ -210,7 +220,6 @@ class _TrainerDetailScreenState extends State<TrainerDetailScreen> {
     final bool isCurrentlyOnLeave = _currentTrainer.isCurrentlyOnLeave;
     final bool isFutureLeave = _currentTrainer.leaveStart!.isAfter(DateTime.now());
 
-    // Sadece şu anki veya gelecekteki izinleri gösterelim (Geçmiş izinler zaten modelde gelmeyebilir veya history'den bakılır)
     if (!isCurrentlyOnLeave && !isFutureLeave) return const SizedBox();
 
     return Card(
@@ -274,16 +283,14 @@ class _TrainerDetailScreenState extends State<TrainerDetailScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               final vm = context.read<UserViewModel>();
-              // LeaveRecord id'si lazım ama biz User üzerinden siliyoruz
-              // Backend'e direkt userId ile iptal yeteneği ekleyelim veya mevcut history'den bulalım
-              // Şimdilik history'deki en güncel aktif kaydı bulup iptal edelim
+
               await vm.fetchLeaveHistory(int.parse(_currentTrainer.id));
               final activeLeave = vm.leaveHistory.firstWhere((l) => l.status == 'ACTIVE', orElse: () => throw "Aktif izin bulunamadı");
-              
+
               final success = await vm.cancelLeave(activeLeave.id);
               if (success && mounted) {
                 Navigator.pop(dialogContext);
-                await vm.fetchUsers(int.parse(_currentTrainer.gymId)); // Ana listeyi tazele
+                await vm.fetchUsers(int.parse(_currentTrainer.gymId));
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("İzin başarıyla iptal edildi.")));
               }
             },
@@ -352,28 +359,30 @@ class _TrainerDetailScreenState extends State<TrainerDetailScreen> {
     final photoUrl = _currentTrainer.profileImageUrl;
     final hasPhoto = photoUrl != null && photoUrl.trim().isNotEmpty;
 
-    // Ders türlerini ana grup başlığı bazında tekleştir (PT, Reformer Pilates, Yoga)
     final mainGroupCategories = (_currentTrainer.canTeach ?? [])
         .map((type) => LessonConstants.getCategory(type))
         .toSet()
         .toList();
 
+    final themeVM = context.watch<ThemeViewModel>();
+    final primaryColor = themeVM.primaryColor;
+
     return Container(
       padding: const EdgeInsets.all(20),
       width: double.infinity,
-      color: Colors.green.withOpacity(0.1),
+      color: primaryColor.withOpacity(0.1),
       child: Column(
         children: [
           CircleAvatar(
-            radius: 50, 
-            backgroundColor: Colors.green,
+            radius: 50,
+            backgroundColor: primaryColor,
             backgroundImage: hasPhoto ? NetworkImage(photoUrl) : null,
             child: !hasPhoto ? const Icon(Icons.engineering, size: 50, color: Colors.white) : null,
           ),
           const SizedBox(height: 10),
           Text(_currentTrainer.fullName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
           Text(_currentTrainer.email, style: const TextStyle(color: Colors.grey)),
-          Text(_currentTrainer.phone ?? "Telefon yok", style: const TextStyle(color: Colors.grey)),
+          Text(formatPhoneNumber(_currentTrainer.phone), style: const TextStyle(color: Colors.grey)),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
@@ -382,24 +391,6 @@ class _TrainerDetailScreenState extends State<TrainerDetailScreen> {
                 label: Text(group, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                 backgroundColor: Colors.green.withOpacity(0.15),
               )).toList(),
-              if (_currentTrainer.instagram != null && _currentTrainer.instagram!.isNotEmpty)
-                Chip(
-                  avatar: const Icon(Icons.camera_alt, size: 16, color: Colors.purple),
-                  label: Text("@${_currentTrainer.instagram}"),
-                  backgroundColor: Colors.purple.withOpacity(0.1),
-                ),
-              if (_currentTrainer.linkedin != null && _currentTrainer.linkedin!.isNotEmpty)
-                Chip(
-                  avatar: const Icon(Icons.work, size: 16, color: Colors.blue),
-                  label: Text(_currentTrainer.linkedin!),
-                  backgroundColor: Colors.blue.withOpacity(0.1),
-                ),
-              if (_currentTrainer.twitter != null && _currentTrainer.twitter!.isNotEmpty)
-                Chip(
-                  avatar: const Icon(Icons.alternate_email, size: 16, color: Colors.black),
-                  label: Text(_currentTrainer.twitter!.replaceFirst(RegExp(r'^@+'), '')),
-                  backgroundColor: Colors.black.withOpacity(0.1),
-                ),
             ],
           ),
         ],
@@ -408,7 +399,20 @@ class _TrainerDetailScreenState extends State<TrainerDetailScreen> {
   }
 
   Widget _buildStatsSection() {
-    // Şimdilik örnek veri, normalde backend'den çekilmeli
+    if (_isLoadingStats) {
+      return const Card(
+        margin: EdgeInsets.all(16),
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    final totalLessons = _trainerStats?['totalLessons'] ?? 0;
+    final unpaidAmount = (_trainerStats?['unpaidAmount'] as num?)?.toDouble() ?? 0.0;
+    final averageRating = (_trainerStats?['averageRating'] as num?)?.toDouble() ?? 0.0;
+
     return Card(
       margin: const EdgeInsets.all(16),
       child: Padding(
@@ -416,11 +420,11 @@ class _TrainerDetailScreenState extends State<TrainerDetailScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _statItem("Toplam Ders", "42", Colors.blue),
+            _statItem("Toplam Ders", "$totalLessons", Colors.blue),
             const VerticalDivider(),
-            _statItem("Hakediş", "3.450 Puan", Colors.green),
+            _statItem("Hakediş", "${unpaidAmount.toStringAsFixed(0)} Puan", Colors.green),
             const VerticalDivider(),
-            _statItem("Puan", "4.8", Colors.amber),
+            _statItem("Puan", averageRating.toStringAsFixed(1), Colors.amber),
           ],
         ),
       ),
@@ -437,6 +441,17 @@ class _TrainerDetailScreenState extends State<TrainerDetailScreen> {
   }
 
   Widget _buildLessonDistribution() {
+    final ptCount = _trainerStats?['ptCount'] ?? 0;
+    final pilatesCount = _trainerStats?['pilatesCount'] ?? _trainerStats?['reformerCount'] ?? 0;
+    final kickBoksCount = _trainerStats?['kickBoksCount'] ?? 0;
+    final yogaCount = _trainerStats?['yogaCount'] ?? 0;
+    final total = ptCount + pilatesCount + kickBoksCount + yogaCount;
+
+    final ptRatio = total > 0 ? ptCount / total : 0.0;
+    final pilatesRatio = total > 0 ? pilatesCount / total : 0.0;
+    final kickBoksRatio = total > 0 ? kickBoksCount / total : 0.0;
+    final yogaRatio = total > 0 ? yogaCount / total : 0.0;
+
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -444,9 +459,10 @@ class _TrainerDetailScreenState extends State<TrainerDetailScreen> {
         children: [
           const Text("Verdiği Ders Grupları", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          _distributionRow(LessonConstants.pt, "28 Ders", 0.6, Colors.blue),
-          _distributionRow(LessonConstants.reformer, "10 Ders", 0.3, Colors.purple),
-          _distributionRow(LessonConstants.yoga, "4 Ders", 0.1, Colors.teal),
+          _distributionRow(LessonConstants.pt, "$ptCount Ders", ptRatio, Colors.blue),
+          _distributionRow(LessonConstants.pilates, "$pilatesCount Ders", pilatesRatio, Colors.purple),
+          _distributionRow(LessonConstants.kickBoks, "$kickBoksCount Ders", kickBoksRatio, Colors.redAccent),
+          _distributionRow(LessonConstants.yoga, "$yogaCount Ders", yogaRatio, Colors.teal),
         ],
       ),
     );
@@ -472,6 +488,8 @@ class _TrainerDetailScreenState extends State<TrainerDetailScreen> {
   }
 
   Widget _buildRecentLessons() {
+    final recentLessons = (_trainerStats?['recentLessons'] as List?) ?? [];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -479,19 +497,36 @@ class _TrainerDetailScreenState extends State<TrainerDetailScreen> {
           padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Text("Son Verdiği Dersler", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         ),
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: 4,
-          itemBuilder: (context, index) {
-            return ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.person)),
-              title: const Text("Üye Adı Soyadı"),
-              subtitle: Text(DateFormat('dd MMMM yyyy, HH:mm', 'tr').format(DateTime.now().subtract(Duration(days: index)))),
-              trailing: const Text("+250 Puan", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-            );
-          },
-        ),
+        if (recentLessons.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text("Henüz verilmiş bir ders bulunmuyor.", style: TextStyle(color: Colors.grey)),
+          )
+        else
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: recentLessons.length,
+            itemBuilder: (context, index) {
+              final lesson = recentLessons[index] as Map<String, dynamic>;
+              final memberName = lesson['memberName'] ?? 'Üye';
+              final amount = lesson['amount'] ?? 0;
+              final dateStr = lesson['date'] as String?;
+              DateTime? date;
+              if (dateStr != null) {
+                date = DateTime.tryParse(dateStr);
+              }
+
+              return ListTile(
+                leading: const CircleAvatar(child: Icon(Icons.person)),
+                title: Text(memberName),
+                subtitle: Text(date != null
+                    ? DateFormat('dd MMMM yyyy, HH:mm', 'tr').format(date)
+                    : ''),
+                trailing: Text("+$amount Puan", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+              );
+            },
+          ),
       ],
     );
   }

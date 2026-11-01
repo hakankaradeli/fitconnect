@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../services/api_service.dart';
+import '../repositories/delegation_repository.dart';
 
 class Delegation {
   final int id;
@@ -27,9 +25,24 @@ class Delegation {
       endTime: DateTime.parse(json['endTime']),
     );
   }
+
+  factory Delegation.fromItem(DelegationItem item) {
+    return Delegation(
+      id: item.id,
+      trainerName: item.trainerName,
+      permission: item.permission,
+      startTime: item.startTime,
+      endTime: item.endTime,
+    );
+  }
 }
 
 class DelegationViewModel extends ChangeNotifier {
+  final DelegationRepository _repository;
+
+  DelegationViewModel({required DelegationRepository repository})
+      : _repository = repository;
+
   List<Delegation> _delegations = [];
   bool _isLoading = false;
   String? _errorMessage;
@@ -43,15 +56,8 @@ class DelegationViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/delegations/gym/$gymId"),
-        headers: ApiService.getHeaders(),
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        _delegations = data.map((json) => Delegation.fromJson(json)).toList();
-      }
+      final items = await _repository.getDelegations(gymId);
+      _delegations = items.map((i) => Delegation.fromItem(i)).toList();
     } catch (e) {
       _errorMessage = e.toString();
     } finally {
@@ -68,19 +74,15 @@ class DelegationViewModel extends ChangeNotifier {
     required DateTime end,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse("${ApiService.baseUrl}/delegations/grant"),
-        headers: ApiService.getHeaders(),
-        body: jsonEncode({
-          "trainerId": trainerId,
-          "gymId": gymId,
-          "permissionType": permissionType,
-          "startTime": start.toIso8601String(),
-          "endTime": end.toIso8601String(),
-        }),
+      final success = await _repository.grantPermission(
+        trainerId: trainerId,
+        gymId: gymId,
+        permissionType: permissionType,
+        start: start,
+        end: end,
       );
 
-      if (response.statusCode == 200) {
+      if (success) {
         fetchDelegations(gymId);
         return true;
       }
@@ -92,12 +94,8 @@ class DelegationViewModel extends ChangeNotifier {
 
   Future<bool> revokePermission(int id, int gymId) async {
     try {
-      final response = await http.delete(
-        Uri.parse("${ApiService.baseUrl}/delegations/$id"),
-        headers: ApiService.getHeaders(),
-      );
-
-      if (response.statusCode == 200) {
+      final success = await _repository.revokePermission(id);
+      if (success) {
         fetchDelegations(gymId);
         return true;
       }

@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../view_models/report_view_model.dart';
 import '../../view_models/login_view_model.dart';
+import '../../utils/currency_utils.dart';
+import '../widgets/custom_back_button.dart';
+import 'user_registry_report_screen.dart';
 
 class FinanceReportScreen extends StatefulWidget {
   const FinanceReportScreen({super.key});
@@ -14,7 +17,12 @@ class FinanceReportScreen extends StatefulWidget {
 class _FinanceReportScreenState extends State<FinanceReportScreen> {
   int _selectedMonth = DateTime.now().month;
   DateTime _selectedDailyDate = DateTime.now();
-  String _selectedUnperformedPeriod = "DAILY"; // DAILY, WEEKLY, MONTHLY, QUARTERLY, SEMI_ANNUALLY, YEARLY
+  String _selectedUnperformedPeriod = "DAILY";
+
+  final Map<int, String> _months = const {
+    1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran",
+    7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"
+  };
 
   @override
   void initState() {
@@ -81,25 +89,45 @@ class _FinanceReportScreenState extends State<FinanceReportScreen> {
     final userData = context.read<LoginViewModel>().userData;
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         backgroundColor: const Color(0xFFF8F9FD),
         appBar: AppBar(
           title: const Text("ERP & Raporlama Modülü", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
           backgroundColor: Colors.white,
           elevation: 0,
+          leading: const CustomBackButton(),
           iconTheme: const IconThemeData(color: Colors.black),
-          bottom: const TabBar(
-            labelColor: Colors.purple,
-            unselectedLabelColor: Colors.grey,
-            indicatorColor: Colors.purple,
-            indicatorWeight: 3,
-            labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            tabs: [
-              Tab(text: "Finansal P&L"),
-              Tab(text: "Şikayet Raporu"),
-              Tab(text: "Yapılmayan Dersler"),
-            ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(48),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0F2F5),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: TabBar(
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                indicator: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 4, offset: const Offset(0, 2))
+                  ],
+                ),
+                labelColor: Colors.purple,
+                unselectedLabelColor: Colors.grey.shade600,
+                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                indicatorSize: TabBarIndicatorSize.tab,
+                tabs: const [
+                  Tab(text: "Finansal P&L"),
+                  Tab(text: "Şikayet Raporu"),
+                  Tab(text: "Yapılmayan Dersler"),
+                  Tab(text: "Üye & Eğitmen Raporu"),
+                ],
+              ),
+            ),
           ),
         ),
         body: TabBarView(
@@ -107,13 +135,13 @@ class _FinanceReportScreenState extends State<FinanceReportScreen> {
             _buildFinanceTab(viewModel, report, userData),
             _buildComplaintsTab(viewModel),
             _buildDailyUnperformedTab(viewModel, userData),
+            const UserRegistryReportScreen(isEmbeddedTab: true),
           ],
         ),
       ),
     );
   }
 
-  // --- TAB 1: FINANSAL P&L TABLOSU ---
   Widget _buildFinanceTab(ReportViewModel viewModel, Map<String, dynamic>? report, Map<String, dynamic>? userData) {
     if (viewModel.isLoading) return const Center(child: CircularProgressIndicator());
     if (report == null) return const Center(child: Text("Rapor yüklenemedi."));
@@ -126,25 +154,39 @@ class _FinanceReportScreenState extends State<FinanceReportScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Dönemsel P&L Tablosu", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              DropdownButton<int>(
-                value: _selectedMonth,
-                items: List.generate(12, (index) => DropdownMenuItem(
-                  value: index + 1,
-                  child: Text("${index + 1}. Ay"),
-                )),
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() => _selectedMonth = val);
-                    viewModel.fetchMonthlyReport(userData?['gymId'], _selectedMonth);
-                  }
-                },
+              const Expanded(
+                child: Text("Dönemsel P&L Tablosu", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _selectedMonth,
+                    icon: const Icon(Icons.arrow_drop_down_rounded, color: Colors.purple),
+                    items: _months.entries.map((e) => DropdownMenuItem(
+                      value: e.key,
+                      child: Text(e.value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    )).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() => _selectedMonth = val);
+                        viewModel.fetchMonthlyReport(userData?['gymId'], _selectedMonth);
+                      }
+                    },
+                  ),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 16),
           _buildSummaryGrid(report['financeSummary']),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
           const Text("Eğitmen Performans Karnesi", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           ... (report['trainerPerformance'] as List).map((t) => _buildTrainerCard(t)).toList(),
@@ -160,17 +202,17 @@ class _FinanceReportScreenState extends State<FinanceReportScreen> {
       crossAxisCount: 2,
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
-      childAspectRatio: 1.4,
+      childAspectRatio: 1.35,
       children: [
-        _buildStatCard("Brüt Gelir", "${summary['totalRevenue']} TL", Colors.green),
-        _buildStatCard("Bekleyen Tahsilat", "${summary['totalPending']} TL", Colors.orange),
-        _buildStatCard("Toplam Giderler", "${summary['trainerCosts']} TL", Colors.redAccent),
-        _buildStatCard("Net Kar/Zarar", "${summary['netProfit']} TL", Colors.blue),
+        _buildStatCard("Brüt Gelir", formatCurrency(summary['totalRevenue']), Icons.trending_up_rounded, Colors.green),
+        _buildStatCard("Bekleyen Tahsilat", formatCurrency(summary['totalPending']), Icons.pending_actions_rounded, Colors.orange),
+        _buildStatCard("Toplam Giderler", formatCurrency(summary['trainerCosts']), Icons.trending_down_rounded, Colors.redAccent),
+        _buildStatCard("Net Kar/Zarar", formatCurrency(summary['netProfit']), Icons.account_balance_rounded, Colors.blue),
       ],
     );
   }
 
-  Widget _buildStatCard(String label, String value, Color color) {
+  Widget _buildStatCard(String label, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -179,11 +221,21 @@ class _FinanceReportScreenState extends State<FinanceReportScreen> {
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-          const SizedBox(height: 4),
-          Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600)),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                child: Icon(icon, color: color, size: 16),
+              ),
+            ],
+          ),
+          Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: color)),
         ],
       ),
     );
@@ -193,27 +245,46 @@ class _FinanceReportScreenState extends State<FinanceReportScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 3))],
+      ),
       child: Row(
         children: [
-          CircleAvatar(backgroundColor: Colors.blue.withOpacity(0.1), child: const Icon(Icons.engineering_rounded, color: Colors.blue)),
-          const SizedBox(width: 16),
+          CircleAvatar(
+            radius: 22,
+            backgroundColor: Colors.blue.withOpacity(0.1),
+            child: const Icon(Icons.engineering_rounded, color: Colors.blue, size: 22),
+          ),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(trainer['trainerName'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                Text("${trainer['lessonCount']} Ders | Memnuniyet: ${trainer['averageRating']} / 5.0", style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Text("${trainer['lessonCount']} Ders", style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
+                    Text(" ${trainer['averageRating']} / 5.0", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber)),
+                  ],
+                ),
               ],
             ),
           ),
-          Text("${trainer['totalEarning']} Puan", style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.green, fontSize: 15)),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+            child: Text("${trainer['totalEarning']} Puan", style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.green, fontSize: 13)),
+          ),
         ],
       ),
     );
   }
 
-  // --- TAB 2: GİZLİ YÖNETİCİ ŞİKAYET VE ANKET RAPORU ---
   Widget _buildComplaintsTab(ReportViewModel viewModel) {
     final complaints = viewModel.trainerComplaints;
 
@@ -238,7 +309,8 @@ class _FinanceReportScreenState extends State<FinanceReportScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text("Gizli Yönetici Şikayet Raporu", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.redAccent, fontSize: 14)),
-                      Text("1-2 yıldız alan veya yazılı geri bildirim bırakılan dersler eğitmene gizli, sadece yöneticiye raporlanır.", style: TextStyle(fontSize: 11, color: Colors.black87)),
+                      SizedBox(height: 2),
+                      Text("1-2 yıldız alan veya yazılı geri bildirim bırakılan dersler eğitmene gizli tutulup sadece yöneticiye raporlanır.", style: TextStyle(fontSize: 11, color: Colors.black87)),
                     ],
                   ),
                 ),
@@ -254,27 +326,39 @@ class _FinanceReportScreenState extends State<FinanceReportScreen> {
             ...complaints.map((item) => Container(
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 3))],
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("Eğitmen: ${item['trainerName']}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.redAccent)),
-                      Row(
-                        children: [
-                          const Icon(Icons.star_rounded, color: Colors.amber, size: 18),
-                          Text(" ${item['rating']} / 5", style: const TextStyle(fontWeight: FontWeight.bold)),
-                        ],
+                      Text("Eğitmen: ${item['trainerName']}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.redAccent, fontSize: 14)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(10)),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
+                            Text(" ${item['rating']} / 5", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Text("Üye: ${item['memberName']}", style: const TextStyle(fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
                   if (item['comment'] != null && item['comment'].toString().isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text("Şikayet / Not: \"${item['comment']}\"", style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.black87)),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(12)),
+                      child: Text("\"${item['comment']}\"", style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.black87)),
+                    ),
                   ],
                 ],
               ),
@@ -284,7 +368,6 @@ class _FinanceReportScreenState extends State<FinanceReportScreen> {
     );
   }
 
-  // --- TAB 3: DÖNEMSEL YAPILMAYAN DERSLER RAPORU ---
   Widget _buildDailyUnperformedTab(ReportViewModel viewModel, Map<String, dynamic>? userData) {
     final list = viewModel.dailyUnperformedReport;
 
@@ -294,12 +377,17 @@ class _FinanceReportScreenState extends State<FinanceReportScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Yapılmayan Dersler Raporu", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Expanded(
+                child: Text(
+                  "Yapılmayan Dersler Raporu",
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               if (_selectedUnperformedPeriod == 'DAILY' || _selectedUnperformedPeriod == 'WEEKLY' || _selectedUnperformedPeriod == 'MONTHLY')
-                TextButton.icon(
-                  onPressed: () async {
+                InkWell(
+                  onTap: () async {
                     final date = await showDatePicker(
                       context: context,
                       initialDate: _selectedDailyDate,
@@ -311,14 +399,30 @@ class _FinanceReportScreenState extends State<FinanceReportScreen> {
                       _loadUnperformedReport();
                     }
                   },
-                  icon: const Icon(Icons.calendar_today_rounded, size: 16),
-                  label: Text(DateFormat('dd MMMM yyyy', 'tr').format(_selectedDailyDate)),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.purple.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.calendar_today_rounded, size: 14, color: Colors.purple),
+                        const SizedBox(width: 5),
+                        Text(
+                          DateFormat('dd MMM yyyy', 'tr').format(_selectedDailyDate),
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.purple),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
             ],
           ),
           const SizedBox(height: 12),
 
-          // Periyot Seçici
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
@@ -356,13 +460,17 @@ class _FinanceReportScreenState extends State<FinanceReportScreen> {
             ...list.map((item) => Container(
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 3))],
+              ),
               child: Row(
                 children: [
                   Container(
                     padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: Colors.red.shade50, shape: BoxShape.circle),
-                    child: const Icon(Icons.cancel_outlined, color: Colors.redAccent),
+                    decoration: BoxDecoration(color: _getReasonColor(item['status']).withOpacity(0.1), shape: BoxShape.circle),
+                    child: Icon(_getReasonIcon(item['status']), color: _getReasonColor(item['status'])),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -370,14 +478,16 @@ class _FinanceReportScreenState extends State<FinanceReportScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text("${item['memberName']} - ${item['trainerName']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                        Text("Tarih/Saat: ${item['time']} | Nedeni: ${item['reason']}", style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        const SizedBox(height: 2),
+                        Text("Tarih/Saat: ${item['time']}", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                        Text("Nedeni: ${item['reason']}", style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontStyle: FontStyle.italic)),
                       ],
                     ),
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8)),
-                    child: Text(_getStatusText(item['status']), style: const TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
+                    decoration: BoxDecoration(color: _getReasonColor(item['status']).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                    child: Text(_getStatusText(item['status']), style: TextStyle(color: _getReasonColor(item['status']), fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -385,6 +495,24 @@ class _FinanceReportScreenState extends State<FinanceReportScreen> {
         ],
       ),
     );
+  }
+
+  IconData _getReasonIcon(String status) {
+    switch (status.toUpperCase()) {
+      case 'NO_SHOW': return Icons.event_busy_rounded;
+      case 'CANCELLED': return Icons.cancel_outlined;
+      case 'PENDING_ADMIN_APPROVAL': return Icons.admin_panel_settings_rounded;
+      default: return Icons.info_outline_rounded;
+    }
+  }
+
+  Color _getReasonColor(String status) {
+    switch (status.toUpperCase()) {
+      case 'NO_SHOW': return Colors.orange;
+      case 'CANCELLED': return Colors.redAccent;
+      case 'PENDING_ADMIN_APPROVAL': return Colors.purple;
+      default: return Colors.blueGrey;
+    }
   }
 
   String _getStatusText(String status) {

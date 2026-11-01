@@ -1,5 +1,6 @@
 package com.gym.backend.controller
 
+import com.gym.backend.config.GlobalExceptionHandler
 import com.gym.backend.service.FinanceService
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
@@ -20,7 +21,7 @@ class FinanceController(private val financeService: FinanceService) {
                 "totalUsed" to balance.totalUsed
             ))
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -32,25 +33,27 @@ class FinanceController(private val financeService: FinanceService) {
             financeService.processPayment(installmentId)
             ResponseEntity.ok(mapOf("message" to "Ödeme başarıyla alındı, krediler yüklendi."))
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
-    // Admin manuel kredi tanımlar
+    // Admin manuel veya kısmi kredi tanımlar
     @PostMapping("/add-credit/{memberId}")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'PERM_MANAGE_USERS')")
     fun addManualCredit(
         @PathVariable memberId: Long,
         @RequestParam amount: Int,
         @RequestParam paymentAmount: Double,
-        @RequestParam isPaid: Boolean,
+        @RequestParam(required = false, defaultValue = "0.0") upfrontAmount: Double,
+        @RequestParam(required = false, defaultValue = "true") isPaid: Boolean,
         @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) dueDate: java.time.LocalDate?
     ): ResponseEntity<Any> {
         return try {
-            financeService.addManualCredit(memberId, amount, paymentAmount, isPaid, dueDate)
-            ResponseEntity.ok(mapOf("message" to "Kredi ve ödeme planı başarıyla kaydedildi."))
+            val actualUpfront = if (isPaid && upfrontAmount == 0.0) paymentAmount else upfrontAmount
+            financeService.addPartialCredit(memberId, amount, paymentAmount, actualUpfront, dueDate)
+            ResponseEntity.ok(mapOf("message" to "Kredi ve kısmi ödeme planı başarıyla kaydedildi."))
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -59,5 +62,27 @@ class FinanceController(private val financeService: FinanceService) {
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'PERM_VIEW_REPORTS')")
     fun getInstallments(@PathVariable gymId: Long): ResponseEntity<Any> {
         return ResponseEntity.ok(financeService.getAllInstallmentsByGym(gymId))
+    }
+
+    // Admin kullanıcının kredisini düzenler
+    @PutMapping("/credit/{memberId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'PERM_MANAGE_USERS', 'ROLE_SUPER_ADMIN')")
+    fun updateCredit(
+        @PathVariable memberId: Long,
+        @RequestBody request: Map<String, Int>
+    ): ResponseEntity<Any> {
+        return try {
+            val totalPurchased = request["totalPurchased"] ?: throw Exception("Toplam kredi zorunlu")
+            val totalUsed = request["totalUsed"] ?: throw Exception("Kullanılan kredi zorunlu")
+            val credit = financeService.updateMemberCredit(memberId, totalPurchased, totalUsed)
+            ResponseEntity.ok(mapOf(
+                "message" to "Kredi başarıyla güncellendi.",
+                "netBalance" to credit.netBalance,
+                "totalPurchased" to credit.totalPurchased,
+                "totalUsed" to credit.totalUsed
+            ))
+        } catch (e: Exception) {
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
+        }
     }
 }

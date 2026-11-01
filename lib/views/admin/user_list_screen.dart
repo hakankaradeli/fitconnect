@@ -4,8 +4,10 @@ import '../../utils/image_utils.dart';
 import '../../view_models/user_view_model.dart';
 import '../../view_models/login_view_model.dart';
 import '../../models/user_model.dart';
-import 'create_member_screen.dart';
 import 'member_detail_screen.dart';
+import 'admin_qr_scanner_screen.dart';
+import '../../view_models/theme_view_model.dart';
+import '../widgets/custom_back_button.dart';
 
 class UserListScreen extends StatefulWidget {
   const UserListScreen({super.key});
@@ -16,6 +18,7 @@ class UserListScreen extends StatefulWidget {
 
 class _UserListScreenState extends State<UserListScreen> {
   String _searchQuery = "";
+  bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -41,12 +44,27 @@ class _UserListScreenState extends State<UserListScreen> {
   @override
   Widget build(BuildContext context) {
     final viewModel = context.watch<UserViewModel>();
+    final themeVM = context.watch<ThemeViewModel>();
+    final primaryColor = themeVM.primaryColor;
     final members = viewModel.users.where((u) => u.role == 'MEMBER').toList();
     final deletedMembers = viewModel.deletedUsers.where((u) => u.role == 'MEMBER').toList();
 
-    final filteredMembers = members
-        .where((u) => u.fullName.toLowerCase().contains(_searchQuery.toLowerCase()))
-        .toList();
+    final query = _searchQuery.trim().toLowerCase();
+    final filteredMembers = members.where((u) {
+      if (query.isEmpty) return true;
+      final matchName = u.fullName.toLowerCase().contains(query);
+      final matchPhone = u.phone != null && u.phone!.contains(query);
+      final matchEmail = u.email.toLowerCase().contains(query);
+      return matchName || matchPhone || matchEmail;
+    }).toList();
+
+    final filteredDeletedMembers = deletedMembers.where((u) {
+      if (query.isEmpty) return true;
+      final matchName = u.fullName.toLowerCase().contains(query);
+      final matchPhone = u.phone != null && u.phone!.contains(query);
+      final matchEmail = u.email.toLowerCase().contains(query);
+      return matchName || matchPhone || matchEmail;
+    }).toList();
 
     return DefaultTabController(
       length: 2,
@@ -55,23 +73,24 @@ class _UserListScreenState extends State<UserListScreen> {
         appBar: AppBar(
           backgroundColor: Colors.white,
           elevation: 0,
-          title: _searchQuery.isEmpty 
+          leading: const CustomBackButton(),
+          title: !_isSearching 
             ? const Text("Üyeler", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)) 
             : TextField(
                 controller: _searchController,
                 autofocus: true,
                 style: const TextStyle(color: Colors.black),
                 decoration: const InputDecoration(
-                  hintText: "Üye ara...",
+                  hintText: "İsim, telefon veya e-posta ile ara...",
                   border: InputBorder.none,
                 ),
                 onChanged: (value) => setState(() => _searchQuery = value),
               ),
           iconTheme: const IconThemeData(color: Colors.black),
           bottom: TabBar(
-            labelColor: Colors.redAccent,
+            labelColor: primaryColor,
             unselectedLabelColor: Colors.grey,
-            indicatorColor: Colors.redAccent,
+            indicatorColor: primaryColor,
             indicatorWeight: 3,
             labelStyle: const TextStyle(fontWeight: FontWeight.bold),
             tabs: const [
@@ -81,32 +100,40 @@ class _UserListScreenState extends State<UserListScreen> {
           ),
           actions: [
             IconButton(
-              icon: Icon(_searchQuery.isEmpty ? Icons.search_rounded : Icons.close_rounded),
+              icon: Icon(!_isSearching ? Icons.search_rounded : Icons.close_rounded),
+              tooltip: !_isSearching ? "Ara" : "Kapat",
               onPressed: () {
                 setState(() {
-                  _searchQuery = "";
-                  _searchController.clear();
+                  if (_isSearching) {
+                    _isSearching = false;
+                    _searchQuery = "";
+                    _searchController.clear();
+                  } else {
+                    _isSearching = true;
+                  }
                 });
               },
             )
           ],
         ),
         floatingActionButton: FloatingActionButton.extended(
-          backgroundColor: Colors.redAccent,
+          backgroundColor: primaryColor,
           onPressed: () async {
             await Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => const CreateMemberScreen()),
+              MaterialPageRoute(
+                builder: (context) => const AdminQrScannerScreen(defaultRole: 'MEMBER'),
+              ),
             );
             _loadUsers();
           },
-          icon: const Icon(Icons.add_rounded, color: Colors.white),
-          label: const Text("YENİ ÜYE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          icon: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white),
+          label: const Text("QR İLE ÜYE EKLE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         ),
         body: TabBarView(
           children: [
             _buildActiveList(viewModel, filteredMembers),
-            _buildDeletedList(deletedMembers),
+            _buildDeletedList(filteredDeletedMembers),
           ],
         ),
       ),
@@ -158,13 +185,15 @@ class _UserListScreenState extends State<UserListScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
-                    color: (user.isActive ? Colors.green : Colors.red).withOpacity(0.1),
+                    color: user.isFrozen 
+                        ? Colors.blue.withOpacity(0.1) 
+                        : (user.isActive ? Colors.green : Colors.red).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    user.isActive ? "AKTİF" : "PASİF",
+                    user.isFrozen ? "DONDURULDU" : (user.isActive ? "AKTİF" : "PASİF"),
                     style: TextStyle(
-                      color: user.isActive ? Colors.green : Colors.red,
+                      color: user.isFrozen ? Colors.blue : (user.isActive ? Colors.green : Colors.red),
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
                     ),

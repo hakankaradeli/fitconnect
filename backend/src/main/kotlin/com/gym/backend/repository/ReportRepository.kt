@@ -23,4 +23,24 @@ interface ReportRepository : JpaRepository<Booking, Long> {
     // No-Show veya tamamlanan ders istatistiklerini getir
     @Query("SELECT COUNT(b) FROM Booking b WHERE b.gym.id = :gymId AND b.status = :status AND EXTRACT(MONTH FROM b.startTime) = :month")
     fun countBookingsByStatus(gymId: Long, status: String, month: Int): Int
+
+    // Bugün salondaki tüm randevular (iptal edilmemiş)
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.gym.id = :gymId AND b.startTime >= :startOfDay AND b.startTime <= :endOfDay AND b.status != 'CANCELLED'")
+    fun countTodayBookings(
+        @org.springframework.data.repository.query.Param("gymId") gymId: Long,
+        @org.springframework.data.repository.query.Param("startOfDay") startOfDay: java.time.LocalDateTime,
+        @org.springframework.data.repository.query.Param("endOfDay") endOfDay: java.time.LocalDateTime
+    ): Int
+
+    // Bugün salonda tamamlanan ders sayısı
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.gym.id = :gymId AND b.startTime >= :startOfDay AND b.startTime <= :endOfDay AND b.status = 'COMPLETED'")
+    fun countTodayCompletedBookings(
+        @org.springframework.data.repository.query.Param("gymId") gymId: Long,
+        @org.springframework.data.repository.query.Param("startOfDay") startOfDay: java.time.LocalDateTime,
+        @org.springframework.data.repository.query.Param("endOfDay") endOfDay: java.time.LocalDateTime
+    ): Int
+
+    // Salonda tüm zamanlarda yapılan (tamamlanan) toplam ders sayısı
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.gym.id = :gymId AND b.status = 'COMPLETED'")
+    fun countAllCompletedBookings(@org.springframework.data.repository.query.Param("gymId") gymId: Long): Int
 }

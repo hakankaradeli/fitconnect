@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../services/api_service.dart';
+import '../repositories/finance_repository.dart';
 import '../models/finance_model.dart';
 
 class FinanceViewModel extends ChangeNotifier {
+  final FinanceRepository _repository;
+
+  FinanceViewModel({required FinanceRepository repository})
+      : _repository = repository;
+
   MemberBalance _balance = MemberBalance(totalCredits: 0, usedCredits: 0);
   List<PaymentPlan> _installments = [];
   bool _isLoading = false;
@@ -17,17 +20,7 @@ class FinanceViewModel extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/finance/balance/$memberId"),
-        headers: ApiService.getHeaders(),
-      );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        _balance = MemberBalance(
-          totalCredits: data['totalPurchased'],
-          usedCredits: data['totalUsed'],
-        );
-      }
+      _balance = await _repository.getBalance(memberId);
     } catch (e) {
       debugPrint("Balance fetch error: $e");
     } finally {
@@ -40,20 +33,20 @@ class FinanceViewModel extends ChangeNotifier {
     required int memberId,
     required int amount,
     required double paymentAmount,
+    double upfrontAmount = 0.0,
     required bool isPaid,
     DateTime? dueDate,
   }) async {
     try {
-      String url = "${ApiService.baseUrl}/finance/add-credit/$memberId?amount=$amount&paymentAmount=$paymentAmount&isPaid=$isPaid";
-      if (dueDate != null) {
-        url += "&dueDate=${dueDate.toIso8601String().split('T').first}";
-      }
-
-      final response = await http.post(
-        Uri.parse(url),
-        headers: ApiService.getHeaders(),
+      final success = await _repository.addCredit(
+        memberId: memberId,
+        amount: amount,
+        paymentAmount: paymentAmount,
+        upfrontAmount: upfrontAmount,
+        isPaid: isPaid,
+        dueDate: dueDate,
       );
-      if (response.statusCode == 200) {
+      if (success) {
         await fetchBalance(memberId);
         return true;
       }
@@ -63,18 +56,33 @@ class FinanceViewModel extends ChangeNotifier {
     }
   }
 
+  Future<bool> updateMemberCredit({
+    required int memberId,
+    required int totalPurchased,
+    required int totalUsed,
+  }) async {
+    try {
+      final success = await _repository.updateMemberCredit(
+        memberId: memberId,
+        totalPurchased: totalPurchased,
+        totalUsed: totalUsed,
+      );
+      if (success) {
+        await fetchBalance(memberId);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint("Update credit error: $e");
+      return false;
+    }
+  }
+
   Future<void> fetchAllInstallments(int gymId) async {
     _isLoading = true;
     notifyListeners();
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/finance/installments/$gymId"),
-        headers: ApiService.getHeaders(),
-      );
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        _installments = data.map((json) => PaymentPlan.fromJson(json)).toList();
-      }
+      _installments = await _repository.getAllInstallments(gymId);
     } catch (e) {
       debugPrint("Installments fetch error: $e");
     } finally {
@@ -85,11 +93,8 @@ class FinanceViewModel extends ChangeNotifier {
 
   Future<bool> confirmPayment(int installmentId, int gymId) async {
     try {
-      final response = await http.post(
-        Uri.parse("${ApiService.baseUrl}/finance/pay/$installmentId"),
-        headers: ApiService.getHeaders(),
-      );
-      if (response.statusCode == 200) {
+      final success = await _repository.confirmPayment(installmentId);
+      if (success) {
         await fetchAllInstallments(gymId);
         return true;
       }
@@ -99,28 +104,24 @@ class FinanceViewModel extends ChangeNotifier {
     }
   }
 
-  // PRD: Kredi Düşüm Kuralı (Her Seans = 1 Kredi)
   void spendCredit() {
     _balance.usedCredits += 1;
     notifyListeners();
   }
 
-  // PRD: Ödeme gerçekleştiğinde krediyi yükle ve eksi bakiyeyi kapat
-  void receivePayment(String planId, int creditsToLoad) {
-    final index = _installments.indexWhere((p) => p.id == planId);
+  void receivePayment(dynamic planId, int creditsToLoad) {
+    final index = _installments.indexWhere((p) => p.id.toString() == planId.toString());
     if (index != -1) {
       _installments[index].status = PaymentStatus.paid;
-      _balance.totalCredits += creditsToLoad; 
-      // Not: netBalance otomatik olarak (total - used) şeklinde düzelecektir.
+      _balance.totalCredits += creditsToLoad;
       notifyListeners();
     }
   }
 
-  // T-1 Gün Hatırlatma Mantığı (Pseudo-code)
   void checkReminders() {
     final tomorrow = DateTime.now().add(const Duration(days: 1));
     for (var plan in _installments) {
-      if (plan.status == PaymentStatus.pending && 
+      if (plan.status == PaymentStatus.pending &&
           plan.dueDate.day == tomorrow.day) {
         _sendWhatsAppReminder(plan);
       }
@@ -128,6 +129,6 @@ class FinanceViewModel extends ChangeNotifier {
   }
 
   void _sendWhatsAppReminder(PaymentPlan plan) {
-    print("WhatsApp API: Yarın ${plan.amount} TL ödemeniz bulunmaktadır.");
+    debugPrint("WhatsApp API: Yarın ${plan.amount} TL ödemeniz bulunmaktadır.");
   }
 }

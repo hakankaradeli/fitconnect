@@ -26,6 +26,9 @@ data class TrainerReport(
 data class AttendanceStats(
     val totalBookings: Int,
     val completedLessons: Int,
+    val todayLessons: Int = 0,
+    val todayCompletedLessons: Int = 0,
+    val totalCompletedAllTime: Int = 0,
     val noShowCount: Int,       // PRD Madde 4: Derse gelmeyenler
     val cancellationRate: Double
 )

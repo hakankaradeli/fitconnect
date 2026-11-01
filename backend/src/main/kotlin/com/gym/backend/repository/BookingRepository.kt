@@ -20,6 +20,14 @@ interface BookingRepository : JpaRepository<Booking, Long> {
     fun countByGymIdAndStatus(gymId: Long, status: String): Int
     fun findAllByGymIdAndStatusOrderByStartTimeAsc(gymId: Long, status: String): List<Booking>
 
+    // Salondaki tüm eğitmenlerin belirli bir tarih aralığındaki aktif randevuları
+    @Query("SELECT b FROM Booking b WHERE b.gym.id = :gymId AND b.startTime BETWEEN :start AND :end AND b.status != 'CANCELLED' ORDER BY b.startTime ASC")
+    fun findAllActiveByGymIdAndStartTimeBetween(
+        @org.springframework.data.repository.query.Param("gymId") gymId: Long,
+        @org.springframework.data.repository.query.Param("start") start: LocalDateTime,
+        @org.springframework.data.repository.query.Param("end") end: LocalDateTime
+    ): List<Booking>
+
     // Eğitmenin belirli bir tarih aralığındaki tüm randevularını getir
     @Query("SELECT b FROM Booking b WHERE b.trainer.id = :trainerId AND b.startTime BETWEEN :start AND :end AND b.status != 'CANCELLED' ORDER BY b.startTime ASC")
     fun findAllActiveByTrainerIdAndStartTimeBetween(
@@ -44,6 +52,12 @@ interface BookingRepository : JpaRepository<Booking, Long> {
     fun findAllActiveByTrainerIdAndStartTimeAfter(
         @org.springframework.data.repository.query.Param("trainerId") trainerId: Long,
         @org.springframework.data.repository.query.Param("startTime") startTime: LocalDateTime
+    ): List<Booking>
+
+    @Query("SELECT b FROM Booking b WHERE b.trainer.id = :trainerId AND b.status = 'COMPLETED' AND b.startTime >= :since ORDER BY b.startTime DESC")
+    fun findLatestCompletedSessions(
+        @org.springframework.data.repository.query.Param("trainerId") trainerId: Long,
+        @org.springframework.data.repository.query.Param("since") since: LocalDateTime
     ): List<Booking>
 
     @Query("""

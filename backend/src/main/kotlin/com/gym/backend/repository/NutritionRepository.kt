@@ -13,6 +13,8 @@ interface NutritionRepository : JpaRepository<NutritionPlan, Long> {
         now: LocalDateTime
     ): NutritionPlan?
 
+    fun findFirstByMemberIdOrderByCreatedAtDesc(memberId: Long): NutritionPlan?
+
     @org.springframework.data.jpa.repository.Query("SELECT n FROM NutritionPlan n WHERE n.member.gym.id = :gymId AND n.expiryDate < :now ORDER BY n.expiryDate ASC")
     fun findAllExpiredPlans(gymId: Long, now: LocalDateTime): List<NutritionPlan>
 }

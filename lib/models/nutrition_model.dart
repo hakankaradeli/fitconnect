@@ -5,7 +5,7 @@ class NutritionModel {
   final int fat;
   final List<String> meals;
   final DateTime updatedAt;
-  final DateTime expiryDate; // Güncellendikten 60 gün sonrası
+  final DateTime expiryDate;
 
   NutritionModel({
     required this.dailyCalories,

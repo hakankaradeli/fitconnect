@@ -5,9 +5,12 @@ import '../../utils/image_utils.dart';
 import '../../view_models/user_view_model.dart';
 import '../../view_models/login_view_model.dart';
 import '../../models/user_model.dart';
-import 'create_trainer_screen.dart';
+import '../../utils/currency_utils.dart';
 import 'trainer_detail_screen.dart';
 import 'trainer_leave_history_screen.dart';
+import 'admin_qr_scanner_screen.dart';
+import '../../view_models/theme_view_model.dart';
+import '../widgets/custom_back_button.dart';
 
 class TrainerListScreen extends StatefulWidget {
   const TrainerListScreen({super.key});
@@ -18,6 +21,7 @@ class TrainerListScreen extends StatefulWidget {
 
 class _TrainerListScreenState extends State<TrainerListScreen> {
   String _searchQuery = "";
+  bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -70,7 +74,7 @@ class _TrainerListScreenState extends State<TrainerListScreen> {
                     ),
                     child: Column(
                       children: [
-                        Text("Eğitmenin birikmiş hakedişi: ${unpaidAmount.toStringAsFixed(0)} Puan", 
+                        Text("Eğitmenin birikmiş hakedişi: ${formatCurrency(unpaidAmount)}", 
                             style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.orange)),
                         const SizedBox(height: 8),
                         CheckboxListTile(
@@ -192,16 +196,33 @@ class _TrainerListScreenState extends State<TrainerListScreen> {
   @override
   Widget build(BuildContext context) {
     final viewModel = context.watch<UserViewModel>();
-    final trainers = viewModel.users.where((u) => u.role == 'TRAINER').toList();
-    final deletedTrainers = viewModel.deletedUsers.where((u) => u.role == 'TRAINER').toList();
+    final themeVM = context.watch<ThemeViewModel>();
+    final primaryColor = themeVM.primaryColor;
+    final trainers = viewModel.users.where((u) => u.isTrainerOrCanTeach).toList();
+    final deletedTrainers = viewModel.deletedUsers.where((u) => u.isTrainerOrCanTeach).toList();
     
     final otherActiveTrainers = (UserModel current) => trainers
         .where((t) => t.id != current.id && t.isActive)
         .toList();
 
-    final filteredTrainers = trainers
-        .where((u) => u.fullName.toLowerCase().contains(_searchQuery.toLowerCase()))
-        .toList();
+    final query = _searchQuery.trim().toLowerCase();
+    final filteredTrainers = trainers.where((u) {
+      if (query.isEmpty) return true;
+      final matchName = u.fullName.toLowerCase().contains(query);
+      final matchPhone = u.phone != null && u.phone!.contains(query);
+      final matchEmail = u.email.toLowerCase().contains(query);
+      final matchBranch = u.canTeach?.any((b) => b.toLowerCase().contains(query)) == true;
+      return matchName || matchPhone || matchEmail || matchBranch;
+    }).toList();
+
+    final filteredDeletedTrainers = deletedTrainers.where((u) {
+      if (query.isEmpty) return true;
+      final matchName = u.fullName.toLowerCase().contains(query);
+      final matchPhone = u.phone != null && u.phone!.contains(query);
+      final matchEmail = u.email.toLowerCase().contains(query);
+      final matchBranch = u.canTeach?.any((b) => b.toLowerCase().contains(query)) == true;
+      return matchName || matchPhone || matchEmail || matchBranch;
+    }).toList();
 
     return DefaultTabController(
       length: 2,
@@ -210,52 +231,67 @@ class _TrainerListScreenState extends State<TrainerListScreen> {
         appBar: AppBar(
           backgroundColor: Colors.white,
           elevation: 0,
-          title: _searchQuery.isEmpty 
+          leading: const CustomBackButton(),
+          title: !_isSearching 
             ? const Text("Eğitmenler", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)) 
             : TextField(
                 controller: _searchController,
                 autofocus: true,
                 style: const TextStyle(color: Colors.black),
-                decoration: const InputDecoration(hintText: "Eğitmen ara...", border: InputBorder.none),
+                decoration: const InputDecoration(
+                  hintText: "İsim, branş veya telefon ile ara...",
+                  border: InputBorder.none,
+                ),
                 onChanged: (value) => setState(() => _searchQuery = value),
               ),
           iconTheme: const IconThemeData(color: Colors.black),
-          bottom: const TabBar(
-            labelColor: Colors.green,
+          bottom: TabBar(
+            labelColor: primaryColor,
             unselectedLabelColor: Colors.grey,
-            indicatorColor: Colors.green,
+            indicatorColor: primaryColor,
             indicatorWeight: 3,
-            labelStyle: TextStyle(fontWeight: FontWeight.bold),
-            tabs: [
+            labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+            tabs: const [
               Tab(text: "Aktif/Pasif"),
               Tab(text: "Silinmişler"),
             ],
           ),
           actions: [
             IconButton(
-              icon: Icon(_searchQuery.isEmpty ? Icons.search_rounded : Icons.close_rounded),
+              icon: Icon(!_isSearching ? Icons.search_rounded : Icons.close_rounded),
+              tooltip: !_isSearching ? "Ara" : "Kapat",
               onPressed: () {
                 setState(() {
-                  _searchQuery = "";
-                  _searchController.clear();
+                  if (_isSearching) {
+                    _isSearching = false;
+                    _searchQuery = "";
+                    _searchController.clear();
+                  } else {
+                    _isSearching = true;
+                  }
                 });
               },
             )
           ],
         ),
         floatingActionButton: FloatingActionButton.extended(
-          backgroundColor: Colors.green,
+          backgroundColor: primaryColor,
           onPressed: () async {
-            await Navigator.push(context, MaterialPageRoute(builder: (context) => const CreateTrainerScreen()));
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const AdminQrScannerScreen(defaultRole: 'TRAINER'),
+              ),
+            );
             _loadTrainers();
           },
-          icon: const Icon(Icons.add_rounded, color: Colors.white),
-          label: const Text("YENİ HOCA", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          icon: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white),
+          label: const Text("QR İLE HOCA EKLE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         ),
         body: TabBarView(
           children: [
             _buildActiveList(viewModel, filteredTrainers, otherActiveTrainers),
-            _buildDeletedList(viewModel, deletedTrainers),
+            _buildDeletedList(viewModel, filteredDeletedTrainers),
           ],
         ),
       ),
@@ -347,10 +383,46 @@ class _TrainerListScreenState extends State<TrainerListScreen> {
                 }
               },
               itemBuilder: (context) => [
-                PopupMenuItem(value: 'status', child: Row(children: [Icon(user.isActive ? Icons.block_rounded : Icons.check_circle_rounded, size: 18), const SizedBox(width: 8), Text(user.isActive ? "Pasife Al" : "Aktifleştir")])),
-                const PopupMenuItem(value: 'leave', child: Row(children: [Icon(Icons.beach_access_rounded, size: 18), const SizedBox(width: 8), Text("İzin Tanımla")])),
-                const PopupMenuItem(value: 'leave_history', child: Row(children: [Icon(Icons.history_rounded, size: 18), const SizedBox(width: 8), Text("İzin Geçmişi")])),
-                const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red), const SizedBox(width: 8), Text("Sil", style: TextStyle(color: Colors.red))])),
+                PopupMenuItem(
+                  value: 'status', 
+                  child: Row(
+                    children: [
+                      Icon(user.isActive ? Icons.block_rounded : Icons.check_circle_rounded, size: 18),
+                      const SizedBox(width: 8),
+                      Text(user.isActive ? "Pasife Al" : "Aktifleştir"),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'leave',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.beach_access_rounded, size: 18),
+                      const SizedBox(width: 8),
+                      const Text("İzin Tanımla"),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'leave_history',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.history_rounded, size: 18),
+                      const SizedBox(width: 8),
+                      const Text("İzin Geçmişi"),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red),
+                      const SizedBox(width: 8),
+                      const Text("Sil", style: TextStyle(color: Colors.red)),
+                    ],
+                  ),
+                ),
               ],
             ),
             onTap: () {

@@ -21,6 +21,9 @@ interface UserRepository : JpaRepository<User, Long> {
     @Query("SELECT u FROM User u WHERE u.gym.id = :gymId AND u.role = :role AND (u.isDeleted IS NULL OR u.isDeleted = false)")
     fun findAllByGymIdAndRoleAndIsDeletedFalse(gymId: Long, role: UserRole): List<User>
     
+    @Query("SELECT u FROM User u WHERE u.gym IS NULL AND (u.isDeleted IS NULL OR u.isDeleted = false) ORDER BY u.id DESC")
+    fun findAllUnassignedUsers(): List<User>
+
     @Query("SELECT u FROM User u WHERE u.id = :userId")
     fun findUserByIdSafely(userId: Long): User?
     

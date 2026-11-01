@@ -1,5 +1,6 @@
 package com.gym.backend.controller
 
+import com.gym.backend.config.GlobalExceptionHandler
 import com.gym.backend.dto.NutritionPlanDto
 import com.gym.backend.model.NutritionPlan
 import com.gym.backend.service.NutritionService
@@ -17,7 +18,7 @@ class NutritionController(private val nutritionService: NutritionService) {
             val savedPlan = nutritionService.savePlan(memberId, trainerId, dto)
             ResponseEntity.ok(savedPlan)
         } catch (e: Exception) {
-            ResponseEntity.badRequest().body(mapOf("error" to e.message))
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
         }
     }
 
@@ -45,5 +46,12 @@ class NutritionController(private val nutritionService: NutritionService) {
     @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'PERM_VIEW_REPORTS')")
     fun getExpiredReports(@PathVariable gymId: Long): ResponseEntity<Any> {
         return ResponseEntity.ok(nutritionService.getExpiredPlans(gymId))
+    }
+
+    // Yönetici veya eğitmen için beslenme planı olmayan üyeler
+    @GetMapping("/without-plan/{gymId}")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'PERM_VIEW_REPORTS', 'ROLE_TRAINER')")
+    fun getMembersWithoutPlan(@PathVariable gymId: Long): ResponseEntity<Any> {
+        return ResponseEntity.ok(nutritionService.getMembersWithoutNutritionPlan(gymId))
     }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../view_models/accrual_view_model.dart';
+import '../widgets/custom_back_button.dart';
 
 class AdminPaymentView extends StatelessWidget {
   const AdminPaymentView({super.key});
@@ -10,7 +11,10 @@ class AdminPaymentView extends StatelessWidget {
     final viewModel = context.watch<AccrualViewModel>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Eğitmen Ödemeleri")),
+      appBar: AppBar(
+        title: const Text("Eğitmen Ödemeleri", style: TextStyle(fontWeight: FontWeight.bold)),
+        leading: const CustomBackButton(),
+      ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

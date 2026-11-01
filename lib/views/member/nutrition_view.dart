@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../view_models/nutrition_view_model.dart';
 import '../../view_models/login_view_model.dart';
+import '../widgets/custom_back_button.dart';
 
 class MemberNutritionView extends StatefulWidget {
   const MemberNutritionView({super.key});
@@ -34,6 +35,7 @@ class _MemberNutritionViewState extends State<MemberNutritionView> {
         title: const Text("Beslenme Planım", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         elevation: 0,
+        leading: const CustomBackButton(),
         iconTheme: const IconThemeData(color: Colors.black),
       ),
       body: nutritionVM.isLoading

@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
-import '../services/api_service.dart';
+import '../repositories/booking_repository.dart';
 
 class MemberScannerViewModel extends ChangeNotifier {
+  final BookingRepository _bookingRepository;
+
+  MemberScannerViewModel({required BookingRepository bookingRepository})
+      : _bookingRepository = bookingRepository;
+
   bool _isProcessing = false;
   String? _statusMessage;
 
   bool get isProcessing => _isProcessing;
   String? get statusMessage => _statusMessage;
 
-  // QR Kod okunduğunda çalışacak fonksiyon
-  Future<bool> validateAndStartSession(String qrData) async {
+  Future<bool> validateAndStartSession(String qrData, {int? memberId}) async {
     if (_isProcessing) return false;
 
     _isProcessing = true;
@@ -19,19 +22,22 @@ class MemberScannerViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // QR Verisini parçala: SESSION|trainerId|gymId|timestamp|bookingId
       final parts = qrData.split('|');
-      if (parts[0] != "SESSION" || parts.length < 5) {
+      if (parts[0] != "SESSION" || parts.length < 4) {
         throw "Geçersiz QR Kod!";
       }
 
       final trainerId = parts[1];
-      final bookingId = parts[4];
+      final bookingIdStr = parts.length > 4 ? parts[4] : "";
+      final bookingId = int.tryParse(bookingIdStr);
 
-      final response = await http.post(
-        Uri.parse("${ApiService.baseUrl}/lessons/verify-qr?bookingId=$bookingId&trainerId=$trainerId"),
-        headers: ApiService.getHeaders(),
+      final response = await _bookingRepository.verifyQrLesson(
+        bookingId: bookingId,
+        trainerId: trainerId,
+        memberId: memberId,
       );
+
+      debugPrint("MemberScanner: [verify-qr] -> Status: ${response.statusCode}, Body: ${response.body}");
 
       if (response.statusCode == 200) {
         _statusMessage = "Ders Başarıyla Tamamlandı!";
@@ -39,11 +45,20 @@ class MemberScannerViewModel extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        final error = jsonDecode(response.body);
-        throw error['error'] ?? "Doğrulama başarısız.";
+        String errorMsg;
+        try {
+          final error = jsonDecode(response.body);
+          errorMsg = error['error'] ?? error['message'] ?? "Doğrulama başarısız (${response.statusCode})";
+        } catch (_) {
+          errorMsg = response.body.isNotEmpty
+              ? response.body
+              : "İşlem başarısız oldu (HTTP ${response.statusCode})";
+        }
+        throw errorMsg;
       }
     } catch (e) {
-      _statusMessage = "Hata: $e";
+      debugPrint("MemberScanner Hatası: $e");
+      _statusMessage = e.toString().replaceFirst("Exception: ", "");
       _isProcessing = false;
       notifyListeners();
       return false;

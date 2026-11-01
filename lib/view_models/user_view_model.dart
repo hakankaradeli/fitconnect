@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../services/api_service.dart';
+import '../repositories/user_repository.dart';
 import '../models/user_model.dart';
 import '../models/leave_record_model.dart';
 
 class UserViewModel extends ChangeNotifier {
+  final UserRepository _userRepository;
+
+  UserViewModel({required UserRepository userRepository})
+      : _userRepository = userRepository;
+
   bool _isLoading = false;
   String? _errorMessage;
   List<UserModel> _users = [];
@@ -22,14 +26,7 @@ class UserViewModel extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/users/leave-history/$trainerId"),
-        headers: ApiService.getHeaders(),
-      );
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        _leaveHistory = data.map((json) => LeaveRecordModel.fromJson(json)).toList();
-      }
+      _leaveHistory = await _userRepository.getLeaveHistory(trainerId);
     } catch (e) {
       debugPrint("Leave history error: $e");
     } finally {
@@ -40,11 +37,7 @@ class UserViewModel extends ChangeNotifier {
 
   Future<bool> cancelLeave(int leaveId) async {
     try {
-      final response = await http.delete(
-        Uri.parse("${ApiService.baseUrl}/users/cancel-leave/$leaveId"),
-        headers: ApiService.getHeaders(),
-      );
-      return response.statusCode == 200;
+      return await _userRepository.cancelLeave(leaveId);
     } catch (e) {
       return false;
     }
@@ -53,24 +46,13 @@ class UserViewModel extends ChangeNotifier {
   Future<void> fetchUsers(int gymId) async {
     _isLoading = true;
     _errorMessage = null;
+    _users = [];
     notifyListeners();
 
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/users/list/$gymId"),
-        headers: ApiService.getHeaders(),
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        _users = data.map((json) => UserModel.fromJson(json)).toList();
-        _isLoading = false;
-        notifyListeners();
-      } else {
-        _errorMessage = "Kullanıcı listesi yüklenemedi: ${response.statusCode}";
-        _isLoading = false;
-        notifyListeners();
-      }
+      _users = await _userRepository.getUsers(gymId);
+      _isLoading = false;
+      notifyListeners();
     } catch (e) {
       _errorMessage = "Hata: $e";
       _isLoading = false;
@@ -80,15 +62,8 @@ class UserViewModel extends ChangeNotifier {
 
   Future<void> fetchDeletedUsers(int gymId) async {
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/users/deleted/$gymId"),
-        headers: ApiService.getHeaders(),
-      );
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        _deletedUsers = data.map((json) => UserModel.fromJson(json)).toList();
-        notifyListeners();
-      }
+      _deletedUsers = await _userRepository.getDeletedUsers(gymId);
+      notifyListeners();
     } catch (e) {
       debugPrint("Deleted users error: $e");
     }
@@ -96,26 +71,57 @@ class UserViewModel extends ChangeNotifier {
 
   Future<double> getUnpaidAccrual(int trainerId) async {
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/accruals/unpaid/$trainerId"),
-        headers: ApiService.getHeaders(),
-      );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return (data['amount'] as num).toDouble();
-      }
-      return 0.0;
+      return await _userRepository.getUnpaidAccrual(trainerId);
     } catch (e) {
       return 0.0;
     }
   }
 
+  Future<Map<String, dynamic>?> getTrainerStats(int trainerId) async {
+    try {
+      return await _userRepository.getTrainerStats(trainerId);
+    } catch (e) {
+      debugPrint("Get trainer stats error: $e");
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> assignGymByQr({
+    required int userId,
+    required int gymId,
+    String? role,
+  }) async {
+    try {
+      final response = await _userRepository.assignGymByQr(userId, gymId, role: role);
+      final bodyStr = response.body.trim();
+
+      if (response.statusCode == 200 && bodyStr.isNotEmpty) {
+        return jsonDecode(bodyStr) as Map<String, dynamic>;
+      } else {
+        if (bodyStr.isNotEmpty) {
+          try {
+            final error = jsonDecode(bodyStr);
+            _errorMessage = error['error'] ?? error['message'] ?? "Salon kaydı ataması başarısız oldu (${response.statusCode}).";
+          } catch (_) {
+            _errorMessage = "Sunucu yanıt hatası (HTTP ${response.statusCode}): $bodyStr";
+          }
+        } else {
+          _errorMessage = "Sunucudan yanıt alınamadı (HTTP ${response.statusCode}). Lütfen sunucu bağlantısını kontrol edin.";
+        }
+        notifyListeners();
+        return null;
+      }
+    } catch (e) {
+      debugPrint("Assign gym error: $e");
+      _errorMessage = "Sunucu bağlantı hatası: $e";
+      notifyListeners();
+      return null;
+    }
+  }
+
   Future<void> markAccrualsPaid(int trainerId) async {
     try {
-      await http.post(
-        Uri.parse("${ApiService.baseUrl}/accruals/pay-all/$trainerId"),
-        headers: ApiService.getHeaders(),
-      );
+      await _userRepository.markAccrualsPaid(trainerId);
     } catch (e) {
       debugPrint("Pay accruals error: $e");
     }
@@ -126,7 +132,7 @@ class UserViewModel extends ChangeNotifier {
     required String email,
     required String phone,
     required String password,
-    required String role, // "MEMBER" or "TRAINER"
+    required String role,
     required int gymId,
     int? trainerId,
     String? lessonType,
@@ -137,21 +143,17 @@ class UserViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await http.post(
-        Uri.parse("${ApiService.baseUrl}/users/create"),
-        headers: ApiService.getHeaders(),
-        body: jsonEncode({
-          "fullName": fullName,
-          "email": email,
-          "phone": phone,
-          "password": password,
-          "role": role,
-          "gymId": gymId,
-          "trainerId": trainerId,
-          "lessonType": lessonType,
-          "canTeach": canTeach,
-        }),
-      );
+      final response = await _userRepository.createUser({
+        "fullName": fullName,
+        "email": email,
+        "phone": phone,
+        "password": password,
+        "role": role,
+        "gymId": gymId,
+        "trainerId": trainerId,
+        "lessonType": lessonType,
+        "canTeach": canTeach,
+      });
 
       if (response.statusCode == 200) {
         _isLoading = false;
@@ -186,24 +188,16 @@ class UserViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final queryParams = {
-        if (trainerId != null) "trainerId": trainerId.toString(),
-        if (lessonType != null) "lessonType": lessonType,
-      };
-
-      final uri = Uri.parse("${ApiService.baseUrl}/users/update-assignment/$memberId")
-          .replace(queryParameters: queryParams);
-
-      final response = await http.put(
-        uri,
-        headers: ApiService.getHeaders(),
+      final response = await _userRepository.updateAssignment(
+        memberId,
+        trainerId: trainerId,
+        lessonType: lessonType,
       );
 
       if (response.statusCode == 200) {
-        // Bellekteki listeyi de güncelle
         final updatedUserJson = jsonDecode(response.body);
         final updatedUser = UserModel.fromJson(updatedUserJson);
-        
+
         int index = _users.indexWhere((u) => u.id == updatedUser.id);
         if (index != -1) {
           _users[index] = updatedUser;
@@ -234,11 +228,7 @@ class UserViewModel extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     try {
-      final response = await http.put(
-        Uri.parse("${ApiService.baseUrl}/users/update-can-teach/$trainerId"),
-        headers: ApiService.getHeaders(),
-        body: jsonEncode(canTeach),
-      );
+      final response = await _userRepository.updateCanTeach(trainerId, canTeach);
       if (response.statusCode == 200) {
         _isLoading = false;
         notifyListeners();
@@ -255,12 +245,10 @@ class UserViewModel extends ChangeNotifier {
 
   Future<bool> deleteUser(int userId, {int? replacementTrainerId}) async {
     try {
-      final queryParams = {
-        if (replacementTrainerId != null) "replacementTrainerId": replacementTrainerId.toString(),
-      };
-      final uri = Uri.parse("${ApiService.baseUrl}/users/$userId").replace(queryParameters: queryParams);
-      
-      final response = await http.delete(uri, headers: ApiService.getHeaders());
+      final response = await _userRepository.deleteUser(
+        userId,
+        replacementTrainerId: replacementTrainerId,
+      );
       if (response.statusCode == 200) {
         _users.removeWhere((u) => u.id == userId.toString());
         notifyListeners();
@@ -274,12 +262,10 @@ class UserViewModel extends ChangeNotifier {
 
   Future<bool> toggleUserStatus(int userId, {int? replacementTrainerId}) async {
     try {
-      final queryParams = {
-        if (replacementTrainerId != null) "replacementTrainerId": replacementTrainerId.toString(),
-      };
-      final uri = Uri.parse("${ApiService.baseUrl}/users/toggle-status/$userId").replace(queryParameters: queryParams);
-
-      final response = await http.put(uri, headers: ApiService.getHeaders());
+      final response = await _userRepository.toggleStatus(
+        userId,
+        replacementTrainerId: replacementTrainerId,
+      );
       if (response.statusCode == 200) {
         final updatedUserJson = jsonDecode(response.body);
         final updatedUser = UserModel.fromJson(updatedUserJson);
@@ -303,17 +289,13 @@ class UserViewModel extends ChangeNotifier {
     int? replacementTrainerId,
   }) async {
     try {
-      String format(DateTime dt) => dt.toIso8601String().split('.').first;
-      
-      final queryParams = {
-        "start": format(start),
-        "end": format(end),
-        if (replacementTrainerId != null) "replacementTrainerId": replacementTrainerId.toString(),
-      };
-      
-      final uri = Uri.parse("${ApiService.baseUrl}/users/set-leave/$trainerId").replace(queryParameters: queryParams);
-      final response = await http.put(uri, headers: ApiService.getHeaders());
-      
+      final response = await _userRepository.setLeave(
+        trainerId: trainerId,
+        start: start,
+        end: end,
+        replacementTrainerId: replacementTrainerId,
+      );
+
       if (response.statusCode == 200) {
         final updatedUserJson = jsonDecode(response.body);
         final updatedUser = UserModel.fromJson(updatedUserJson);
@@ -332,14 +314,7 @@ class UserViewModel extends ChangeNotifier {
 
   Future<UserModel?> fetchProfile(int userId) async {
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/users/profile/$userId"),
-        headers: ApiService.getHeaders(),
-      );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return UserModel.fromJson(data);
-      }
+      return await _userRepository.getProfile(userId);
     } catch (e) {
       debugPrint("Fetch profile error: $e");
     }
@@ -378,11 +353,7 @@ class UserViewModel extends ChangeNotifier {
         "newPassword": newPassword,
       };
 
-      final response = await http.put(
-        Uri.parse("${ApiService.baseUrl}/users/profile/$userId"),
-        headers: ApiService.getHeaders(),
-        body: jsonEncode(body),
-      );
+      final response = await _userRepository.updateProfile(userId, body);
 
       if (response.statusCode == 200) {
         _isLoading = false;
@@ -404,17 +375,15 @@ class UserViewModel extends ChangeNotifier {
 
   Future<bool> unfreezeMember(int memberId) async {
     try {
-      final response = await http.put(
-        Uri.parse("${ApiService.baseUrl}/users/unfreeze-member/$memberId"),
-        headers: ApiService.getHeaders(),
-      );
-      if (response.statusCode == 200) {
-        final updatedUserJson = jsonDecode(response.body);
-        final updatedUser = UserModel.fromJson(updatedUserJson);
-        int index = _users.indexWhere((u) => u.id == updatedUser.id);
-        if (index != -1) {
-          _users[index] = updatedUser;
-          notifyListeners();
+      final success = await _userRepository.unfreezeMember(memberId);
+      if (success) {
+        final updatedUser = await _userRepository.getProfile(memberId);
+        if (updatedUser != null) {
+          int index = _users.indexWhere((u) => u.id == updatedUser.id);
+          if (index != -1) {
+            _users[index] = updatedUser;
+            notifyListeners();
+          }
         }
         return true;
       }
@@ -431,15 +400,12 @@ class UserViewModel extends ChangeNotifier {
     String? reason,
   }) async {
     try {
-      String format(DateTime dt) => dt.toIso8601String().split('T').first;
-      final queryParams = {
-        "start": format(start),
-        "end": format(end),
-        if (reason != null && reason.isNotEmpty) "reason": reason,
-      };
-
-      final uri = Uri.parse("${ApiService.baseUrl}/users/freeze-member/$memberId").replace(queryParameters: queryParams);
-      final response = await http.put(uri, headers: ApiService.getHeaders());
+      final response = await _userRepository.freezeMember(
+        memberId: memberId,
+        start: start,
+        end: end,
+        reason: reason,
+      );
 
       if (response.statusCode == 200) {
         final updatedUserJson = jsonDecode(response.body);
@@ -455,5 +421,30 @@ class UserViewModel extends ChangeNotifier {
     } catch (e) {
       return false;
     }
+  }
+
+  Future<bool> deleteSelfAccount(int userId) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final response = await _userRepository.selfDelete(userId);
+
+      if (response.statusCode == 200) {
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      } else {
+        final errorData = jsonDecode(response.body);
+        _errorMessage = errorData['error'] ?? "Hesap silinemedi";
+      }
+    } catch (e) {
+      _errorMessage = "Sunucu hatası: $e";
+      debugPrint("Self delete account error: $e");
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+    return false;
   }
 }

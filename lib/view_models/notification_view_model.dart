@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../services/api_service.dart';
+import '../repositories/notification_repository.dart';
 import '../models/notification_model.dart';
 
 class NotificationViewModel extends ChangeNotifier {
+  final NotificationRepository _repository;
+
+  NotificationViewModel({required NotificationRepository repository})
+      : _repository = repository;
+
   List<NotificationModel> _notifications = [];
   bool _isLoading = false;
 
@@ -16,15 +19,7 @@ class NotificationViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/notifications/$userId"),
-        headers: ApiService.getHeaders(),
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        _notifications = data.map((json) => NotificationModel.fromJson(json)).toList();
-      }
+      _notifications = await _repository.getNotifications(userId);
     } catch (e) {
       debugPrint("Notifications error: $e");
     } finally {
@@ -35,31 +30,50 @@ class NotificationViewModel extends ChangeNotifier {
 
   Future<void> markAsRead(int id) async {
     try {
-      await http.put(
-        Uri.parse("${ApiService.baseUrl}/notifications/mark-as-read/$id"),
-        headers: ApiService.getHeaders(),
-      );
-      final index = _notifications.indexWhere((n) => n.id == id);
-      if (index != -1) {
-        _notifications[index].isRead = true;
-        notifyListeners();
+      final success = await _repository.markAsRead(id);
+      if (success) {
+        final index = _notifications.indexWhere((n) => n.id == id);
+        if (index != -1) {
+          _notifications[index].isRead = true;
+          notifyListeners();
+        }
       }
     } catch (e) {
       debugPrint("Mark as read error: $e");
     }
   }
 
+  Future<void> deleteNotification(int id) async {
+    try {
+      final success = await _repository.deleteNotification(id);
+      if (success) {
+        _notifications.removeWhere((n) => n.id == id);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint("Delete notification error: $e");
+    }
+  }
+
+  Future<void> deleteAllNotifications(int userId) async {
+    try {
+      final success = await _repository.deleteAllNotifications(userId);
+      if (success) {
+        _notifications.clear();
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint("Delete all notifications error: $e");
+    }
+  }
+
   Future<bool> sendBulkNotification({required int gymId, required String message, String? role}) async {
     try {
-      String url = "${ApiService.baseUrl}/notifications/send-bulk?gymId=$gymId&message=${Uri.encodeComponent(message)}";
-      if (role != null) url += "&role=$role";
-
-      final response = await http.post(
-        Uri.parse(url),
-        headers: ApiService.getHeaders(),
+      return await _repository.sendBulkNotification(
+        gymId: gymId,
+        message: message,
+        role: role,
       );
-
-      return response.statusCode == 200;
     } catch (e) {
       debugPrint("Send bulk error: $e");
       return false;

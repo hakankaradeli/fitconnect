@@ -1,5 +1,6 @@
 package com.gym.backend.controller
 
+import com.gym.backend.config.GlobalExceptionHandler
 import com.gym.backend.repository.NotificationRepository
 import com.gym.backend.service.NotificationService
 import com.gym.backend.model.UserRole
@@ -26,6 +27,26 @@ class NotificationController(
         notification.isRead = true
         notificationRepository.save(notification)
         return ResponseEntity.ok(mapOf("message" to "Okundu işaretlendi"))
+    }
+
+    @DeleteMapping("/{id}")
+    fun deleteNotification(@PathVariable id: Long): ResponseEntity<Any> {
+        return try {
+            notificationRepository.deleteById(id)
+            ResponseEntity.ok(mapOf("message" to "Bildirim başarıyla silindi"))
+        } catch (e: Exception) {
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
+        }
+    }
+
+    @DeleteMapping("/all/{userId}")
+    fun deleteAllNotifications(@PathVariable userId: Long): ResponseEntity<Any> {
+        return try {
+            notificationRepository.deleteAllByUserId(userId)
+            ResponseEntity.ok(mapOf("message" to "Tüm bildirimler başarıyla silindi"))
+        } catch (e: Exception) {
+            ResponseEntity.badRequest().body(mapOf("error" to GlobalExceptionHandler.sanitizeMessage(e)))
+        }
     }
 
     @PostMapping("/send-bulk")

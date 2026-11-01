@@ -32,8 +32,11 @@ dependencies {
 
     // JWT (JSON Web Token) için (Giriş işlemleri)
     implementation("io.jsonwebtoken:jjwt-api:0.11.5")
-    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.11.5")
-    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.11.5")
+    implementation("io.jsonwebtoken:jjwt-impl:0.11.5")
+    implementation("io.jsonwebtoken:jjwt-jackson:0.11.5")
+
+    // Rate Limiting (Bucket4j)
+    implementation("com.bucket4j:bucket4j-core:8.10.1")
 }
 
 tasks.withType<KotlinCompile> {

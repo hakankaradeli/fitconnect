@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../services/api_service.dart';
+import '../repositories/trainer_rate_repository.dart';
 
 class TrainerRateViewModel extends ChangeNotifier {
+  final TrainerRateRepository _repository;
+
+  TrainerRateViewModel({required TrainerRateRepository repository})
+      : _repository = repository;
+
   Map<String, double> _rates = {};
   bool _isLoading = false;
   String? _errorMessage;
@@ -18,21 +21,9 @@ class TrainerRateViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/trainer-rates/$trainerId"),
-        headers: ApiService.getHeaders(),
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        _rates = {for (var item in data) item['lessonType']: item['amount'].toDouble()};
-        _isLoading = false;
-        notifyListeners();
-      } else {
-        _errorMessage = "Ücretler yüklenemedi.";
-        _isLoading = false;
-        notifyListeners();
-      }
+      _rates = await _repository.getRates(trainerId);
+      _isLoading = false;
+      notifyListeners();
     } catch (e) {
       _errorMessage = "Hata: $e";
       _isLoading = false;
@@ -47,17 +38,14 @@ class TrainerRateViewModel extends ChangeNotifier {
     required int gymId,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse("${ApiService.baseUrl}/trainer-rates/$trainerId"),
-        headers: ApiService.getHeaders(),
-        body: jsonEncode({
-          "lessonType": lessonType,
-          "amount": amount,
-          "gymId": gymId,
-        }),
+      final success = await _repository.updateRate(
+        trainerId: trainerId,
+        lessonType: lessonType,
+        amount: amount,
+        gymId: gymId,
       );
 
-      if (response.statusCode == 200) {
+      if (success) {
         _rates[lessonType] = amount;
         notifyListeners();
         return true;

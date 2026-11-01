@@ -5,26 +5,30 @@ import com.gym.backend.model.User
 import com.gym.backend.model.UserRole
 import com.gym.backend.repository.GymRepository
 import com.gym.backend.repository.UserRepository
+import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.CommandLineRunner
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Component
 
 @Component
+@ConditionalOnProperty(name = ["app.init-data.enabled"], havingValue = "true", matchIfMissing = false)
 class DataInitializer(
     private val userRepository: UserRepository,
     private val gymRepository: GymRepository,
-    private val userService: com.gym.backend.service.UserService
+    private val passwordEncoder: PasswordEncoder,
+    @Value("\${app.init-data.admin-email:admin@hkfitconnect.com}")
+    private val adminEmail: String,
+    @Value("\${app.init-data.admin-password:}")
+    private val adminPassword: String,
+    @Value("\${app.init-data.gym-name:HK Fit Connect Studio}")
+    private val gymName: String
 ) : CommandLineRunner {
 
-    override fun run(vararg args: String?) {
-        try {
-            // 0. Eksik verileri onar (isDeleted, isActive null olanları düzelt)
-            userService.repairMissingData()
-        } catch (e: Exception) {
-            println("--- VERI ONARIMI HATASI: ${e.message} ---")
-        }
+    private val logger = LoggerFactory.getLogger(DataInitializer::class.java)
 
-        // 1. Önce bir Salon (Gym) oluşturalım...
-        val gymName = "HK Fit Connect Studio"
+    override fun run(vararg args: String?) {
         val gym = gymRepository.findByName(gymName) ?: gymRepository.save(
             Gym(
                 name = gymName,
@@ -33,22 +37,24 @@ class DataInitializer(
             )
         )
 
-        // 2. Admin kullanıcısını oluşturalım
         try {
-            val adminEmail = "admin@hkfitconnect.com"
             if (userRepository.findByEmail(adminEmail) == null) {
-                val adminUser = User(
-                    email = adminEmail,
-                    passwordHash = "123456", // Not: Gerçekte encode edilmeli
-                    fullName = "HK Admin",
-                    role = UserRole.ADMIN,
-                    gym = gym
-                )
-                userRepository.save(adminUser)
-                println("--- TEST VERİSİ: Admin hesabı oluşturuldu ($adminEmail / 123456) ---")
+                if (adminPassword.isNotBlank()) {
+                    val adminUser = User(
+                        email = adminEmail,
+                        passwordHash = passwordEncoder.encode(adminPassword.trim()),
+                        fullName = "HK Admin",
+                        role = UserRole.ADMIN,
+                        gym = gym
+                    )
+                    userRepository.save(adminUser)
+                    logger.info("Test/Seed Admin hesabı oluşturuldu ({})", adminEmail)
+                } else {
+                    logger.warn("app.init-data.enabled=true fakat INIT_DATA_ADMIN_PASSWORD boş bırakıldığı için varsayılan admin kullanıcısı oluşturulmadı.")
+                }
             }
         } catch (e: Exception) {
-            println("--- ADMIN OLUSTURMA HATASI: Karakter kodlamasindan kaynakli olabilir. ---")
+            logger.error("Admin kullanıcısı oluşturulurken hata: {}", e.message)
         }
     }
 }

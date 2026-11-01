@@ -1,6 +1,7 @@
 class PerformedExercise {
   final int? id;
   final String exerciseName;
+  final String? muscleGroup;
   final int? sets;
   final int? reps;
   final String? weight;
@@ -9,6 +10,7 @@ class PerformedExercise {
   PerformedExercise({
     this.id,
     required this.exerciseName,
+    this.muscleGroup,
     this.sets,
     this.reps,
     this.weight,
@@ -18,7 +20,8 @@ class PerformedExercise {
   factory PerformedExercise.fromJson(Map<String, dynamic> json) {
     return PerformedExercise(
       id: json['id'],
-      exerciseName: json['exerciseName'],
+      exerciseName: json['exerciseName'] ?? '',
+      muscleGroup: json['muscleGroup'],
       sets: json['sets'],
       reps: json['reps'],
       weight: json['weight'],
@@ -29,6 +32,7 @@ class PerformedExercise {
   Map<String, dynamic> toJson() {
     return {
       'exerciseName': exerciseName,
+      'muscleGroup': muscleGroup,
       'sets': sets,
       'reps': reps,
       'weight': weight,
@@ -45,6 +49,10 @@ class BookingDetails {
   final DateTime endTime;
   final String status;
   final List<PerformedExercise> performedExercises;
+  final int? trainerId;
+  final int? memberId;
+  final String? trainerPhone;
+  final String? memberPhone;
 
   BookingDetails({
     required this.id,
@@ -54,6 +62,10 @@ class BookingDetails {
     required this.endTime,
     required this.status,
     this.performedExercises = const [],
+    this.trainerId,
+    this.memberId,
+    this.trainerPhone,
+    this.memberPhone,
   });
 
   factory BookingDetails.fromJson(Map<String, dynamic> json) {
@@ -62,14 +74,21 @@ class BookingDetails {
         ? list.map((i) => PerformedExercise.fromJson(i)).toList() 
         : [];
 
+    final memberMap = json['member'];
+    final trainerMap = json['trainer'];
+
     return BookingDetails(
       id: json['id'],
-      memberName: json['member']['fullName'],
-      trainerName: json['trainer']['fullName'],
+      memberName: memberMap is Map ? (memberMap['fullName'] ?? '') : (json['memberName'] ?? ''),
+      trainerName: trainerMap is Map ? (trainerMap['fullName'] ?? '') : (json['trainerName'] ?? ''),
       startTime: DateTime.parse(json['startTime']),
       endTime: DateTime.parse(json['endTime']),
-      status: json['status'],
+      status: json['status'] ?? 'ACTIVE',
       performedExercises: exercises,
+      trainerId: trainerMap is Map ? (trainerMap['id'] is int ? trainerMap['id'] : int.tryParse(trainerMap['id']?.toString() ?? '')) : null,
+      memberId: memberMap is Map ? (memberMap['id'] is int ? memberMap['id'] : int.tryParse(memberMap['id']?.toString() ?? '')) : null,
+      trainerPhone: trainerMap is Map ? trainerMap['phone'] : null,
+      memberPhone: memberMap is Map ? memberMap['phone'] : null,
     );
   }
 

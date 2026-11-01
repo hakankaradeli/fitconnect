@@ -10,9 +10,21 @@ import org.springframework.web.bind.annotation.*
 class AccrualController(private val accrualService: AccrualService) {
 
     @GetMapping("/unpaid/{trainerId}")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'PERM_VIEW_REPORTS')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_TRAINER', 'PERM_VIEW_REPORTS')")
     fun getUnpaidAmount(@PathVariable trainerId: Long): ResponseEntity<Any> {
         return ResponseEntity.ok(mapOf("amount" to accrualService.getUnpaidAmount(trainerId)))
+    }
+
+    @GetMapping("/unpaid-details/{trainerId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_TRAINER', 'PERM_VIEW_REPORTS')")
+    fun getUnpaidDetails(@PathVariable trainerId: Long): ResponseEntity<Any> {
+        return ResponseEntity.ok(accrualService.getUnpaidDetails(trainerId))
+    }
+
+    @GetMapping("/stats/{trainerId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_TRAINER', 'PERM_VIEW_REPORTS')")
+    fun getTrainerStats(@PathVariable trainerId: Long): ResponseEntity<Any> {
+        return ResponseEntity.ok(accrualService.getTrainerStats(trainerId))
     }
 
     @PostMapping("/pay-all/{trainerId}")

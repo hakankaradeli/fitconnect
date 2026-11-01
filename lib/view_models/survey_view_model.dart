@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
+import '../repositories/survey_repository.dart';
 
 class SurveyViewModel extends ChangeNotifier {
+  final SurveyRepository _repository;
+
+  SurveyViewModel({required SurveyRepository repository})
+      : _repository = repository;
+
   double _rating = 0;
   bool _isSubmitting = false;
 
@@ -12,20 +18,26 @@ class SurveyViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> submitSurvey(String comment) async {
+  Future<bool> submitSurvey(String comment, {int? bookingId, int? trainerId, int? memberId}) async {
     if (_rating == 0) return false;
 
     _isSubmitting = true;
     notifyListeners();
 
-    // Backend Simülasyonu
-    await Future.delayed(const Duration(seconds: 2));
+    final result = await _repository.submitSurveyResult(
+      bookingId: bookingId,
+      trainerId: trainerId,
+      memberId: memberId,
+      rating: _rating,
+      comment: comment.trim().isNotEmpty ? comment.trim() : null,
+    );
 
-    // Burada API'ye gönderilecek: "POST /api/surveys"
-    
     _isSubmitting = false;
-    _rating = 0; // Reset
+    final success = result.isSuccess;
+    if (success) {
+      _rating = 0;
+    }
     notifyListeners();
-    return true;
+    return success;
   }
 }
